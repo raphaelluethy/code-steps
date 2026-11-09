@@ -1,0 +1,158 @@
+<idea-plugin>
+    <id>com.github.raphaelluethy.codesteps</id>
+    <name>Code Steps</name>
+    <vendor>raphaelluethy</vendor>
+
+    <description><![CDATA[
+    Present code step by step, like slides, or play a recorded refactoring back chunk by chunk as if it were
+    typed live. Steps are versions of a file; each change between two steps plays as diff hunks, one at a time.
+    <ul>
+      <li>Works with every file type: stepping, diffing, highlighting, and animation use only the document text.</li>
+      <li>The presented file stays a normal editor, so highlighting, navigation, completion, and inspections keep working.</li>
+      <li>Hunk, highlight (marker pen), fade, and typewriter transitions, auto-play with pause and speed control,
+          and a projector mode with a large font for classrooms.</li>
+      <li>Record a refactoring: start recording, edit as usual, capture or commit, stop. The result is a presentation.</li>
+      <li>Presentations are plain files in <code>.codesteps/</code>: a readable <code>presentation.yaml</code> plus one
+          snapshot file per step. Commit them, review them in pull requests, and share them by cloning the repository.</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends optional="true" config-file="codesteps-vcs.xml">com.intellij.modules.vcs</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable parentId="tools" id="codesteps.settings" displayName="Code Steps"
+                                 instance="com.github.raphaelluethy.codesteps.settings.CodeStepsConfigurable"/>
+        <editorNotificationProvider
+                implementation="com.github.raphaelluethy.codesteps.ui.PresentationNotificationProvider"/>
+        <directoryIndexExcludePolicy
+                implementation="com.github.raphaelluethy.codesteps.storage.CodeStepsExcludePolicy"/>
+        <notificationGroup id="Code Steps" displayType="BALLOON"/>
+    </extensions>
+
+    <applicationListeners>
+        <listener class="com.github.raphaelluethy.codesteps.presentation.StopOnProjectClose"
+                  topic="com.intellij.openapi.project.ProjectCloseListener"/>
+    </applicationListeners>
+
+    <actions>
+        <action id="CodeSteps.Start" class="com.github.raphaelluethy.codesteps.actions.StartPresentationAction"
+                text="Start Presentation" description="Present the steps of the current file or choose a presentation"
+                icon="/icons/startPresentation.svg"/>
+        <action id="CodeSteps.Previous" class="com.github.raphaelluethy.codesteps.actions.PreviousStepAction"
+                text="Previous Step" description="Go back to the start of the current or previous step"
+                icon="AllIcons.Actions.Play_back">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift COMMA"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift COMMA" replace-all="true"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift COMMA" replace-all="true"/>
+        </action>
+        <action id="CodeSteps.Next" class="com.github.raphaelluethy.codesteps.actions.NextStepAction"
+                text="Next Step" description="Play the next step hunk by hunk; press again to complete it at once"
+                icon="AllIcons.Actions.Play_forward">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift PERIOD"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift PERIOD" replace-all="true"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift PERIOD" replace-all="true"/>
+        </action>
+        <action id="CodeSteps.PreviousHunk" class="com.github.raphaelluethy.codesteps.actions.PreviousHunkAction"
+                text="Previous Hunk" description="Take back the last shown hunk"
+                icon="AllIcons.Actions.PreviousOccurence">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift OPEN_BRACKET"/>
+        </action>
+        <action id="CodeSteps.NextHunk" class="com.github.raphaelluethy.codesteps.actions.NextHunkAction"
+                text="Next Hunk" description="Show the next hunk of the change"
+                icon="AllIcons.Actions.NextOccurence">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift CLOSE_BRACKET"/>
+        </action>
+        <action id="CodeSteps.PlayPause" class="com.github.raphaelluethy.codesteps.actions.PlayPauseAction"
+                text="Play" description="Play the hunks one at a time" icon="AllIcons.Actions.Execute">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift SPACE"/>
+        </action>
+        <action id="CodeSteps.Faster" class="com.github.raphaelluethy.codesteps.actions.FasterAction"
+                text="Play Faster" description="Increase the playback speed">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift EQUALS"/>
+        </action>
+        <action id="CodeSteps.Slower" class="com.github.raphaelluethy.codesteps.actions.SlowerAction"
+                text="Play Slower" description="Decrease the playback speed">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift MINUS"/>
+        </action>
+        <action id="CodeSteps.ChooseSpeed" class="com.github.raphaelluethy.codesteps.actions.ChooseSpeedAction"
+                text="Playback Speed…" description="Choose the playback speed"/>
+        <action id="CodeSteps.First" class="com.github.raphaelluethy.codesteps.actions.FirstStepAction"
+                text="First Step" description="Show the first step of the presentation"
+                icon="AllIcons.Actions.Play_first">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift HOME"/>
+        </action>
+        <action id="CodeSteps.Last" class="com.github.raphaelluethy.codesteps.actions.LastStepAction"
+                text="Last Step" description="Show the last step of the presentation"
+                icon="AllIcons.Actions.Play_last">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift END"/>
+        </action>
+        <action id="CodeSteps.ToggleProjectorMode" class="com.github.raphaelluethy.codesteps.actions.ToggleProjectorModeAction"
+                text="Projector Mode" description="Large font, hidden tool windows, and a large banner for presenting"
+                icon="AllIcons.Actions.PresentationAssistantSettings"/>
+        <action id="CodeSteps.Stop" class="com.github.raphaelluethy.codesteps.actions.StopPresentationAction"
+                text="Stop Presentation" description="Stop presenting and restore the file"
+                icon="AllIcons.Actions.Suspend"/>
+        <action id="CodeSteps.StartRecording" class="com.github.raphaelluethy.codesteps.actions.StartRecordingAction"
+                text="Start Recording" description="Record your edits to this file as a new presentation"
+                icon="AllIcons.Ide.Macro.Recording_1"/>
+        <action id="CodeSteps.StopRecording" class="com.github.raphaelluethy.codesteps.actions.StopRecordingAction"
+                text="Stop Recording" description="Capture the last step and finish the recorded presentation"
+                icon="AllIcons.Actions.Suspend"/>
+        <action id="CodeSteps.CaptureStep" class="com.github.raphaelluethy.codesteps.actions.CaptureStepAction"
+                text="Capture Step" description="Save the current editor content as a new presentation step"
+                icon="AllIcons.General.Add"/>
+        <action id="CodeSteps.UpdateStep" class="com.github.raphaelluethy.codesteps.actions.UpdateStepAction"
+                text="Save Editor to Current Step" description="Overwrite the current step with the editor content"
+                icon="AllIcons.Actions.MenuSaveall"/>
+        <action id="CodeSteps.ToggleHighlight" class="com.github.raphaelluethy.codesteps.actions.ToggleHighlightAction"
+                text="Highlight Changes" description="Highlight what changed after each hunk"
+                icon="AllIcons.Actions.Highlighting"/>
+
+        <group id="CodeSteps.Menu" text="Code Steps" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <reference ref="CodeSteps.Start"/>
+            <reference ref="CodeSteps.Stop"/>
+            <separator/>
+            <reference ref="CodeSteps.PlayPause"/>
+            <reference ref="CodeSteps.NextHunk"/>
+            <reference ref="CodeSteps.PreviousHunk"/>
+            <reference ref="CodeSteps.Next"/>
+            <reference ref="CodeSteps.Previous"/>
+            <reference ref="CodeSteps.First"/>
+            <reference ref="CodeSteps.Last"/>
+            <reference ref="CodeSteps.Faster"/>
+            <reference ref="CodeSteps.Slower"/>
+            <reference ref="CodeSteps.ChooseSpeed"/>
+            <reference ref="CodeSteps.ToggleProjectorMode"/>
+            <reference ref="CodeSteps.ToggleHighlight"/>
+            <separator/>
+            <reference ref="CodeSteps.StartRecording"/>
+            <reference ref="CodeSteps.StopRecording"/>
+            <reference ref="CodeSteps.CaptureStep"/>
+            <reference ref="CodeSteps.UpdateStep"/>
+        </group>
+
+        <group id="CodeSteps.Toolbar">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="first"/>
+            <reference ref="CodeSteps.Start"/>
+            <reference ref="CodeSteps.StopRecording"/>
+            <reference ref="CodeSteps.First"/>
+            <reference ref="CodeSteps.Previous"/>
+            <reference ref="CodeSteps.PreviousHunk"/>
+            <reference ref="CodeSteps.PlayPause"/>
+            <reference ref="CodeSteps.NextHunk"/>
+            <reference ref="CodeSteps.Next"/>
+            <reference ref="CodeSteps.Last"/>
+            <reference ref="CodeSteps.ToggleProjectorMode"/>
+            <reference ref="CodeSteps.Stop"/>
+        </group>
+
+        <group id="CodeSteps.EditorPopup">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <reference ref="CodeSteps.StartRecording"/>
+            <reference ref="CodeSteps.CaptureStep"/>
+        </group>
+    </actions>
+</idea-plugin>

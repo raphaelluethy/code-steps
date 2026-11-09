@@ -1,0 +1,5 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <checkinHandlerFactory implementation="com.github.raphaelluethy.codesteps.recording.RecordOnCommit"/>
+    </extensions>
+</idea-plugin>
