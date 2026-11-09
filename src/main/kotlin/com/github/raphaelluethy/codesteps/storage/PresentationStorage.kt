@@ -137,6 +137,6 @@ object PresentationStorage {
         return name
     }
 
-    fun slug(text: String): String =
+    private fun slug(text: String): String =
         text.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').take(40).trimEnd('-')
 }

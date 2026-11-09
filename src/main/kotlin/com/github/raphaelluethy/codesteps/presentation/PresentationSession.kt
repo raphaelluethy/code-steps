@@ -115,8 +115,6 @@ class PresentationSession(private val project: Project) : Disposable {
         runTransition(session.stepTexts[session.index], TransitionStyle.INSTANT)
         editor?.caretModel?.moveToOffset(0)
         editor?.scrollingModel?.scrollToCaret(ScrollType.MAKE_VISIBLE)
-        if (settings.projectorMode) applyProjectorMode()
-        refreshBanner()
     }
 
     /** Shows the next hunk; at the end of a step's hunks this reaches the next step. */
@@ -171,12 +169,7 @@ class PresentationSession(private val project: Project) : Disposable {
     fun last() {
         val session = active ?: return
         stopPlaying()
-        if (!session.isAtEnd || session.hunk != 0) moveTo(session.stepCount - 1, 0)
-    }
-
-    fun goTo(index: Int) {
-        stopPlaying()
-        moveTo(index, 0)
+        if (!session.isAtEnd) moveTo(session.stepCount - 1, 0)
     }
 
     /** Starts or pauses playback. A pause lets the current hunk finish. */
@@ -413,8 +406,6 @@ class PresentationSession(private val project: Project) : Disposable {
     }
 
     private var projector: ProjectorState? = null
-
-    val isProjectorModeApplied: Boolean get() = projector != null
 
     /** Turns projector mode on or off and applies it to the running presentation. */
     fun setProjectorMode(enabled: Boolean) {

@@ -40,18 +40,20 @@ class PresentationNotificationProvider : EditorNotificationProvider, DumbAware {
         }
 
         val session = project.serviceIfCreated<PresentationSession>() ?: return null
-        val active = session.active ?: return null
-        if (active.target != file) return null
-        val settings = CodeStepsSettings.getInstance().state
-        val projector = settings.projectorMode
-        val position = if (active.hunk == 0) {
-            "Step ${active.index + 1} of ${active.stepCount}: ${active.stepTitle}"
-        } else {
-            "Step ${active.index + 1} → ${active.index + 2}: ${active.nextStepTitle} · " +
-                "hunk ${active.hunk} of ${active.hunks().size}"
-        }
-        val playing = if (session.isPlaying) " · playing" else ""
+        if (session.active?.target != file) return null
+        // This method runs on a background thread, but the session belongs to the EDT,
+        // so the position is read when the banner is built.
         return Function { fileEditor ->
+            val active = session.active?.takeIf { it.target == file } ?: return@Function null
+            val settings = CodeStepsSettings.getInstance().state
+            val projector = settings.projectorMode
+            val position = if (active.hunk == 0) {
+                "Step ${active.index + 1} of ${active.stepCount}: ${active.stepTitle}"
+            } else {
+                "Step ${active.index + 1} → ${active.index + 2}: ${active.nextStepTitle} · " +
+                    "hunk ${active.hunk} of ${active.hunks().size}"
+            }
+            val playing = if (session.isPlaying) " · playing" else ""
             EditorNotificationPanel(fileEditor, EditorNotificationPanel.Status.Info).apply {
                 icon(if (session.isPlaying) AllIcons.Actions.Execute else AllIcons.Actions.Play_forward)
                 text = (if (projector) "" else "${active.presentation.title} · ") + position + playing

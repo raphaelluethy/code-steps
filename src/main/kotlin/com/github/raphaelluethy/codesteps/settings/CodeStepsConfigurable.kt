@@ -37,9 +37,7 @@ class CodeStepsConfigurable : BoundConfigurable("Code Steps") {
                     val colorPanel = ColorPanel()
                     cell(colorPanel)
                         .onReset { colorPanel.selectedColor = CodeStepsSettings.parseColor(state.highlightColor) }
-                        .onIsModified {
-                            colorPanel.selectedColor?.let(CodeStepsSettings::formatColor) != state.highlightColor?.uppercase()
-                        }
+                        .onIsModified { colorPanel.selectedColor != CodeStepsSettings.parseColor(state.highlightColor) }
                         .onApply { colorPanel.selectedColor?.let { state.highlightColor = CodeStepsSettings.formatColor(it) } }
                     label("text on it turns black or white, whichever reads better")
                 }

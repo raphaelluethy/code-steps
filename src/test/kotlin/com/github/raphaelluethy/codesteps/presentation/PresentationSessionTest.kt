@@ -104,7 +104,7 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEquals(step1, targetText)
         assertTrue(active.isAtStart)
 
-        session.goTo(2)
+        session.last()
         session.previousHunk() // crosses back into the change from step 2 to step 3
         assertEquals(1, active.index)
         assertEquals(active.hunks().size - 1, active.hunk)

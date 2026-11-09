@@ -65,6 +65,7 @@ class ManifestFormatTest {
     fun `rejects invalid manifests`() {
         assertThrows(ManifestException::class.java) { ManifestFormat.parse("title: x\nsteps:\n") }
         assertThrows(ManifestException::class.java) { ManifestFormat.parse("target: a\nsteps:\n  - file: ../../etc/passwd\n") }
+        assertThrows(ManifestException::class.java) { ManifestFormat.parse("target: src/../../outside.txt\nsteps:\n") }
         assertThrows(ManifestException::class.java) { ManifestFormat.parse("target: a\nsteps:\n  - title: missing file\n") }
         assertThrows(ManifestException::class.java) { ManifestFormat.parse("target: a\n- file: x\n") }
         assertThrows(ManifestException::class.java) { ManifestFormat.parse("target: \"unterminated\n") }

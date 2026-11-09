@@ -104,8 +104,11 @@ object ManifestFormat {
         }
         flushStep()
 
-        val targetPath = target?.takeIf { it.isNotBlank() } ?: throw ManifestException("missing 'target'")
-        return Manifest(title, targetPath.replace('\\', '/').removePrefix("/"), steps)
+        val targetPath = target?.takeIf { it.isNotBlank() }?.replace('\\', '/')?.removePrefix("/")
+            ?: throw ManifestException("missing 'target'")
+        // Presenting overwrites the target's content, so it must stay inside the project like the step files.
+        if (".." in targetPath.split('/')) throw ManifestException("'target' must be inside the project, got '$targetPath'")
+        return Manifest(title, targetPath, steps)
     }
 
     /** Step files must stay inside the presentation folder. */
@@ -116,7 +119,7 @@ object ManifestFormat {
         return file
     }
 
-    fun quote(value: String): String = buildString {
+    private fun quote(value: String): String = buildString {
         append('"')
         for (c in value) {
             when {

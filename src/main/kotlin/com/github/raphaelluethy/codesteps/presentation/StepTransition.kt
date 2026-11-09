@@ -30,6 +30,7 @@ import java.awt.Rectangle
 import javax.swing.Timer
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * Turns the current text of [document] into [newText], optionally animated:
@@ -96,9 +97,6 @@ class StepTransition(
         first.newStart to max(oldLines, newLines) + 1
     }
 
-    /** The first changed offset in the new text, or null when nothing changes. */
-    val firstChangeOffset: Int? get() = changes.firstOrNull()?.newStart
-
     private val markup = DocumentMarkupModel.forDocument(document, project, true)
     private val transientHighlighters = mutableListOf<RangeHighlighter>()
     private val typingSpans = mutableListOf<RangeHighlighter>()
@@ -112,8 +110,7 @@ class StepTransition(
     private var expectedStamp = document.modificationStamp
     private var timer: Timer? = null
 
-    var isFinished = false
-        private set
+    private var isFinished = false
 
     /** Starts the animation on a Swing timer, or applies the change immediately when there is nothing to animate. */
     fun start() {
@@ -121,7 +118,7 @@ class StepTransition(
             finish()
             return
         }
-        firstChangeOffset?.let(onProgress)
+        focus?.let { (offset, _) -> onProgress(offset) }
         if (fadeOutMs > 0) {
             for (change in changes) {
                 if (change.removedLength > 0) transientHighlighters += addSpans(change.oldStart, change.oldEnd, fadeOutAttributes(0.0))
@@ -248,11 +245,7 @@ class StepTransition(
                     typingChange++
                     typingOffset = 0
                     // Keep the finished change marked while the next one is typed.
-                    if (highlight) {
-                        typingSpans.forEach { it.dispose() }
-                        typingSpans.clear()
-                        transientHighlighters += addSpans(change.newStart, change.newEnd, markerAttributes())
-                    }
+                    if (highlight) transientHighlighters += addSpans(change.newStart, change.newEnd, markerAttributes())
                 }
             }
         }
@@ -408,7 +401,7 @@ class StepTransition(
 }
 
 /** Saturated colors that survive washed-out projectors on light and dark editor themes. */
-object Palette {
+private object Palette {
     val REMOVED = Color(0xFF3B3B)
 
     /** Black or white, whichever contrasts more with [background]. */
@@ -421,7 +414,7 @@ object Palette {
     private fun luminance(color: Color): Double {
         fun channel(value: Int): Double {
             val c = value / 255.0
-            return if (c <= 0.03928) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+            return if (c <= 0.03928) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
         }
         return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
     }
