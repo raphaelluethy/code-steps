@@ -101,6 +101,7 @@ Each step file is a complete copy of the target file at that step and keeps the 
 syntax highlighting and a pull request shows each step as an ordinary file. To see what one step changes, diff two
 step files. You can write or edit everything by hand: reorder steps by moving their entries, and rename step files as
 long as the manifest matches. The manifest is a small YAML subset: one `key: value` per line, values plain or quoted.
+`codesteps` is the format version; the plugin refuses a presentation with a version newer than it knows.
 
 The plugin excludes `.codesteps/` from indexing, so step files do not show up as duplicate classes in navigation or
 search. They are still regular files in version control.

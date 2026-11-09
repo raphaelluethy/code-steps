@@ -4,8 +4,8 @@ import com.github.raphaelluethy.codesteps.diff.StepDiff
 import com.github.raphaelluethy.codesteps.diff.TextChange
 import com.github.raphaelluethy.codesteps.settings.CodeStepsSettings
 import com.github.raphaelluethy.codesteps.settings.TransitionStyle
-import com.github.raphaelluethy.codesteps.storage.ManifestException
 import com.github.raphaelluethy.codesteps.storage.Presentation
+import com.github.raphaelluethy.codesteps.storage.PresentationException
 import com.github.raphaelluethy.codesteps.storage.PresentationStorage
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -102,11 +102,11 @@ class PresentationSession(private val project: Project) : Disposable {
     /** Opens the target file and shows step [startIndex] without animation. */
     fun start(presentation: Presentation, startIndex: Int = 0) {
         stop()
-        if (presentation.manifest.steps.isEmpty()) throw ManifestException("'${presentation.title}' has no steps yet")
+        if (presentation.manifest.steps.isEmpty()) throw PresentationException("'${presentation.title}' has no steps yet")
         val target = presentation.findTarget()
-            ?: throw ManifestException("Target file '${presentation.manifest.target}' does not exist")
+            ?: throw PresentationException("Target file '${presentation.manifest.target}' does not exist")
         val document = FileDocumentManager.getInstance().getDocument(target)
-            ?: throw ManifestException("'${presentation.manifest.target}' cannot be opened as text")
+            ?: throw PresentationException("'${presentation.manifest.target}' cannot be opened as text")
         val texts = presentation.manifest.steps.indices.map { PresentationStorage.stepText(presentation, it) }
         val session = Active(presentation, target, document, document.text, texts.toMutableList())
         session.index = startIndex.coerceIn(0, texts.lastIndex)
@@ -215,7 +215,7 @@ class PresentationSession(private val project: Project) : Disposable {
         val session = active ?: return
         stopPlaying()
         transition?.finish()
-        if (session.hunk != 0) throw ManifestException("Finish or rewind the current step before saving the editor to it")
+        if (session.hunk != 0) throw PresentationException("Finish or rewind the current step before saving the editor to it")
         val text = session.document.text
         WriteCommandAction.writeCommandAction(project)
             .withName("Code Steps: Update Step")

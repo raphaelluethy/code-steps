@@ -20,6 +20,12 @@ data class Presentation(val dir: VirtualFile, val manifest: Manifest) {
 }
 
 /**
+ * A presentation cannot be loaded, started or changed, for example because its manifest is broken or a file is
+ * missing. The message is shown to the user.
+ */
+class PresentationException(message: String) : Exception(message)
+
+/**
  * Stores presentations as plain files under `<project>/.codesteps/<name>/`:
  * a `presentation.yaml` manifest plus one complete snapshot file per step.
  *
@@ -40,7 +46,7 @@ object PresentationStorage {
             .mapNotNull { dir ->
                 try {
                     load(dir)
-                } catch (e: ManifestException) {
+                } catch (e: PresentationException) {
                     LOG.warn("Skipping ${dir.path}: ${e.message}")
                     null
                 }
@@ -58,21 +64,21 @@ object PresentationStorage {
         if (dir.parent?.name != ROOT_DIR || dir.findChild(ManifestFormat.FILE_NAME) == null) return null
         return try {
             load(dir)
-        } catch (_: ManifestException) {
+        } catch (_: PresentationException) {
             null
         }
     }
 
     fun load(dir: VirtualFile): Presentation {
         val manifestFile = dir.findChild(ManifestFormat.FILE_NAME)
-            ?: throw ManifestException("${dir.path} has no ${ManifestFormat.FILE_NAME}")
+            ?: throw PresentationException("${dir.path} has no ${ManifestFormat.FILE_NAME}")
         return Presentation(dir, ManifestFormat.parse(readText(manifestFile)))
     }
 
     fun stepText(presentation: Presentation, index: Int): String {
         val step = presentation.manifest.steps[index]
         val file = presentation.dir.findChild(step.file)
-            ?: throw ManifestException("Step file '${step.file}' is missing in ${presentation.dir.path}")
+            ?: throw PresentationException("Step file '${step.file}' is missing in ${presentation.dir.path}")
         return readText(file)
     }
 

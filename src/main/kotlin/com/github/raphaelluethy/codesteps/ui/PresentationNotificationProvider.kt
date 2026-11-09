@@ -1,5 +1,6 @@
 package com.github.raphaelluethy.codesteps.ui
 
+import com.github.raphaelluethy.codesteps.actions.captureRecordedStep
 import com.github.raphaelluethy.codesteps.presentation.PresentationSession
 import com.github.raphaelluethy.codesteps.recording.RecordingSession
 import com.github.raphaelluethy.codesteps.settings.CodeStepsSettings
@@ -8,7 +9,6 @@ import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
@@ -28,12 +28,7 @@ class PresentationNotificationProvider : EditorNotificationProvider, DumbAware {
                     text = "Recording '${recording.presentation.title}': ${recording.stepCount} " +
                         (if (recording.stepCount == 1) "step" else "steps") + " so far. " +
                         "Capture Step and IDE commits add steps."
-                    createActionLabel("Capture step") {
-                        val title = Messages.showInputDialog(
-                            project, "Step title:", "Capture Step", null, "Step ${recording.stepCount + 1}", null,
-                        ) ?: return@createActionLabel
-                        RecordingSession.getInstance(project).capture(title)
-                    }
+                    createActionLabel("Capture step") { captureRecordedStep(project) }
                     createActionLabel("Stop recording", "CodeSteps.StopRecording")
                 }
             }

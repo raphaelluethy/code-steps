@@ -6,8 +6,6 @@ data class Step(val file: String, val title: String)
 /** Contents of a `presentation.yaml` file. [target] is relative to the repository root and uses `/`. */
 data class Manifest(val title: String, val target: String, val steps: List<Step>)
 
-class ManifestException(message: String) : Exception(message)
-
 /**
  * Reads and writes `presentation.yaml`.
  *
@@ -24,6 +22,7 @@ class ManifestException(message: String) : Exception(message)
  * ```
  *
  * Values may be double-quoted (with JSON-style escapes), single-quoted, or plain. Unknown keys are ignored.
+ * `codesteps` is the format version; it may be left out, but a file written by a newer format is rejected.
  */
 object ManifestFormat {
     const val FILE_NAME = "presentation.yaml"
@@ -55,7 +54,7 @@ object ManifestFormat {
 
         fun flushStep() {
             if (stepFile == null && stepTitle == null) return
-            val file = stepFile ?: throw ManifestException("line $stepLine: step has no 'file'")
+            val file = stepFile ?: throw PresentationException("line $stepLine: step has no 'file'")
             steps += Step(validateStepFile(file, stepLine), stepTitle ?: file)
             stepFile = null
             stepTitle = null
@@ -70,7 +69,7 @@ object ManifestFormat {
             val isItem = entry == "-" || entry.startsWith("- ")
 
             if (isItem) {
-                if (!inSteps) throw ManifestException("line $lineNumber: list item outside of 'steps'")
+                if (!inSteps) throw PresentationException("line $lineNumber: list item outside of 'steps'")
                 flushStep()
                 stepLine = lineNumber
                 entry = entry.removePrefix("-").trimStart()
@@ -78,7 +77,7 @@ object ManifestFormat {
             }
 
             val colon = entry.indexOf(':')
-            if (colon <= 0) throw ManifestException("line $lineNumber: expected 'key: value'")
+            if (colon <= 0) throw PresentationException("line $lineNumber: expected 'key: value'")
             val key = entry.substring(0, colon).trim()
             val value = unquote(entry.substring(colon + 1).trim(), lineNumber)
 
@@ -86,11 +85,16 @@ object ManifestFormat {
                 flushStep()
                 inSteps = false
                 when (key) {
+                    "codesteps" -> if (value.toIntOrNull() !in 1..FORMAT_VERSION) {
+                        throw PresentationException(
+                            "line $lineNumber: unsupported format version '$value', this plugin reads up to version $FORMAT_VERSION",
+                        )
+                    }
                     "title" -> title = value
                     "target" -> target = value
                     "steps" -> {
                         if (value.isNotEmpty() && value != "[]") {
-                            throw ManifestException("line $lineNumber: 'steps' must be followed by a list")
+                            throw PresentationException("line $lineNumber: 'steps' must be followed by a list")
                         }
                         inSteps = true
                     }
@@ -105,16 +109,16 @@ object ManifestFormat {
         flushStep()
 
         val targetPath = target?.takeIf { it.isNotBlank() }?.replace('\\', '/')?.removePrefix("/")
-            ?: throw ManifestException("missing 'target'")
+            ?: throw PresentationException("missing 'target'")
         // Presenting overwrites the target's content, so it must stay inside the project like the step files.
-        if (".." in targetPath.split('/')) throw ManifestException("'target' must be inside the project, got '$targetPath'")
+        if (".." in targetPath.split('/')) throw PresentationException("'target' must be inside the project, got '$targetPath'")
         return Manifest(title, targetPath, steps)
     }
 
     /** Step files must stay inside the presentation folder. */
     private fun validateStepFile(file: String, line: Int): String {
         if (file.isBlank() || file == "." || file == ".." || file.contains('/') || file.contains('\\')) {
-            throw ManifestException("line $line: step file must be a plain file name, got '$file'")
+            throw PresentationException("line $line: step file must be a plain file name, got '$file'")
         }
         return file
     }
@@ -164,11 +168,11 @@ object ManifestFormat {
                         'u' -> {
                             val hex = value.substring(i + 2, minOf(i + 6, value.length))
                             val code = hex.takeIf { it.length == 4 }?.toIntOrNull(16)
-                                ?: throw ManifestException("line $line: invalid \\u escape")
+                                ?: throw PresentationException("line $line: invalid \\u escape")
                             out.append(code.toChar())
                             i += 4
                         }
-                        else -> throw ManifestException("line $line: unsupported escape '\\$e'")
+                        else -> throw PresentationException("line $line: unsupported escape '\\$e'")
                     }
                     i += 2
                 }
@@ -178,7 +182,7 @@ object ManifestFormat {
                 }
             }
         }
-        throw ManifestException("line $line: unterminated string")
+        throw PresentationException("line $line: unterminated string")
     }
 
     private fun unquoteSingle(value: String, line: Int): String {
@@ -198,13 +202,13 @@ object ManifestFormat {
             out.append(c)
             i++
         }
-        throw ManifestException("line $line: unterminated string")
+        throw PresentationException("line $line: unterminated string")
     }
 
     private fun requireOnlyComment(rest: String, line: Int) {
         val trimmed = rest.trim()
         if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
-            throw ManifestException("line $line: unexpected text after closing quote")
+            throw PresentationException("line $line: unexpected text after closing quote")
         }
     }
 }

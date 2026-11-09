@@ -3,8 +3,8 @@ package com.github.raphaelluethy.codesteps.actions
 import com.github.raphaelluethy.codesteps.presentation.PresentationSession
 import com.github.raphaelluethy.codesteps.recording.RecordingSession
 import com.github.raphaelluethy.codesteps.settings.CodeStepsSettings
-import com.github.raphaelluethy.codesteps.storage.ManifestException
 import com.github.raphaelluethy.codesteps.storage.Presentation
+import com.github.raphaelluethy.codesteps.storage.PresentationException
 import com.github.raphaelluethy.codesteps.storage.PresentationStorage
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationAction
@@ -35,11 +35,11 @@ private fun notify(
         .notify(project)
 }
 
-/** Runs [block] and reports broken or missing presentation files as a notification instead of an exception. */
+/** Runs [block] and reports a [PresentationException] as a notification. */
 private fun reportingErrors(project: Project, block: () -> Unit) {
     try {
         block()
-    } catch (e: ManifestException) {
+    } catch (e: PresentationException) {
         notify(project, e.message ?: "Invalid presentation", NotificationType.ERROR)
     }
 }
@@ -67,6 +67,18 @@ private fun startPresentationAction(project: Project, presentation: Presentation
     NotificationAction.createSimpleExpiring("Start presentation") {
         reportingErrors(project) { PresentationSession.getInstance(project).start(presentation) }
     }
+
+private fun askStepTitle(project: Project, default: String): String? =
+    Messages.showInputDialog(project, "Step title:", "Capture Step", null, default, null)
+        ?.trim()?.ifEmpty { default }
+
+/** Asks for a title and adds the recorded file's content as a step. Used by Capture Step and the recording banner. */
+internal fun captureRecordedStep(project: Project) {
+    val recording = RecordingSession.getInstance(project)
+    val recorded = recording.recording ?: return
+    val title = askStepTitle(project, "Step ${recorded.stepCount + 1}") ?: return
+    if (!recording.capture(title)) notify(project, "Nothing changed since the last captured step.")
+}
 
 private fun AnActionEvent.session(): PresentationSession? = project?.serviceIfCreated<PresentationSession>()
 
@@ -307,18 +319,15 @@ class CaptureStepAction : DumbAwareAction() {
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
 
-        val recording = RecordingSession.getInstance(project)
-        val recorded = recording.recording
-        if (recorded != null && recorded.file == file) {
-            val title = askTitle(project, "Step ${recorded.stepCount + 1}") ?: return
-            if (!recording.capture(title)) notify(project, "Nothing changed since the last captured step.")
+        if (RecordingSession.getInstance(project).recording?.file == file) {
+            captureRecordedStep(project)
             return
         }
 
         val session = PresentationSession.getInstance(project)
         val active = session.active
         if (active != null && active.target == file) {
-            val title = askTitle(project, "Step ${active.index + 2}") ?: return
+            val title = askStepTitle(project, "Step ${active.index + 2}") ?: return
             reportingErrors(project) { session.insertEditorAsStepAfterCurrent(title) }
             return
         }
@@ -331,7 +340,7 @@ class CaptureStepAction : DumbAwareAction() {
         val existing = PresentationStorage.forTarget(root, file)
         val save = save@{ presentation: Presentation? ->
             val stepCount = presentation?.manifest?.steps?.size ?: 0
-            val title = askTitle(project, "Step ${stepCount + 1}") ?: return@save
+            val title = askStepTitle(project, "Step ${stepCount + 1}") ?: return@save
             val text = editor.document.text
             val updated = WriteCommandAction.writeCommandAction(project)
                 .withName("Code Steps: Capture Step")
@@ -348,10 +357,6 @@ class CaptureStepAction : DumbAwareAction() {
         }
         if (existing.isEmpty()) save(null) else choosePresentation(project, existing, "Add Step To") { save(it) }
     }
-
-    private fun askTitle(project: Project, default: String): String? =
-        Messages.showInputDialog(project, "Step title:", "Capture Step", null, default, null)
-            ?.trim()?.ifEmpty { default }
 }
 
 class ToggleHighlightAction : DumbAwareToggleAction() {
