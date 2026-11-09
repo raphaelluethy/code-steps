@@ -26,6 +26,8 @@ dependencies {
         bundledPlugin("com.intellij.platform.vcs")
         bundledModule("intellij.platform.vcs.core")
         testFramework(TestFrameworkType.Platform)
+        // Only so the README images show highlighted Java, see DocImages.
+        testBundledPlugin("com.intellij.java")
     }
     testImplementation("junit:junit:4.13.2")
     // Missing from the Platform test framework, see the IntelliJ Platform Gradle Plugin FAQ.
@@ -45,5 +47,14 @@ intellijPlatform {
         ides {
             recommended()
         }
+    }
+}
+
+tasks.test {
+    // `./gradlew test --tests '*DocImages*' -PdocImages` renders the README images into build/doc-images,
+    // see docs/images/README.md. Without the property, DocImages does nothing.
+    if (providers.gradleProperty("docImages").isPresent) {
+        systemProperty("codesteps.docs.dir", layout.buildDirectory.dir("doc-images").get().asFile.path)
+        outputs.upToDateWhen { false }
     }
 }
