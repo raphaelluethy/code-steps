@@ -36,7 +36,7 @@ within the change to the next step) with **◀ Back**, **Next ▶**, **Play**, *
 
 | Action | Windows / Linux | What it does |
 | --- | --- | --- |
-| Next hunk (**Next ▶**) | `Ctrl+Alt+Shift+]` | Shows the next hunk: the old block goes, the new block comes. |
+| Next hunk (**Next ▶**) | `Ctrl+Alt+Shift+]` | Shows the next hunk: the old code goes, the new code comes. |
 | Previous hunk (**◀ Back**) | `Ctrl+Alt+Shift+[` | Takes back the last hunk. |
 | Play / Pause | `Ctrl+Alt+Shift+Space` | Plays the hunks of the step one at a time with a pause between them. Pause lets the current hunk finish. |
 | Next step | `Ctrl+Alt+Shift+.` | Plays the rest of the step hunk by hunk; press again to complete it at once. |
@@ -45,9 +45,10 @@ within the change to the next step) with **◀ Back**, **Next ▶**, **Play**, *
 On macOS, Next and Previous step are `⌘⌥⇧.` and `⌘⌥⇧,`. Change or add shortcuts under
 **Settings | Keymap | Plugins | Code Steps**. **Stop** puts back the content the file had before you started.
 
-A change looks like an edit made by hand, without the typing. The old code is selected, in the editor's selection
+A change looks like an edit made by hand, without the typing, and is as small as the edit: in a changed line only
+the words that differ go and come, while a block that was rewritten is replaced as a whole. The old code is selected, in the editor's selection
 color, and fades out. The space it took slides open or closed to fit the new code, so the code below moves to its
-new place and never jumps. Then the new code fades in. Changed lines keep a soft tint until the next step; the
+new place and never jumps. Then the new code fades in. Changed words and lines keep a soft tint until the next step; the
 text keeps its syntax colors. Removed code leaves no mark.
 
 The editor keeps the active hunk centered. While presenting you can type freely; **Save Editor to Current Step**
@@ -64,8 +65,8 @@ project:
 
 - **Animate changes** and how long a fade takes (900 ms). Off, each change appears at once.
 - **Tint changed lines** and the tint color (yellow).
-- **Use the diff colors of the editor color scheme** instead of the tint: old code fades out in the deleted or
-  modified color, and new code keeps the inserted or modified color, as in the diff viewer.
+- **Use the diff colors of the editor color scheme** instead of the tint: old code fades out in the
+  deleted color, and new code keeps the inserted color.
 - How long Play pauses between hunks (800 ms, doubled after a finished step).
 - Whether Play continues into the next step.
 - The projector mode font size.

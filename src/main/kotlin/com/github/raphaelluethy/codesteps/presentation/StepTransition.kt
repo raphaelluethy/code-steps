@@ -14,7 +14,6 @@ import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.colors.EditorFontType
-import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.CustomHighlighterOrder
@@ -36,16 +35,15 @@ import kotlin.math.roundToInt
 
 /**
  * Turns the current text of [document] into [newText], animated like an edit made by hand, minus the
- * typing: each block of changed lines is selected and fades out, the space it took slides to the size
- * of the new lines, and the new lines fade in. Text fades with its own syntax colors, and in [editor]
+ * typing: each edit (changed words inside a line, or a block of changed lines) is selected and fades out,
+ * the space it took slides to the size of the new text, and the new text fades in. Text fades with its own syntax colors, and in [editor]
  * the code around a change slides instead of jumping. With a [fadeDurationMs] of 0 the change is applied at once.
  * Everything works on plain document text, so it behaves the same for every file type.
  *
  * Changed lines keep a soft tint of [highlightColor]; null leaves no mark. The tints go to [highlights],
  * which the caller owns, so they can outlive the transition (for example all hunks of a step stay
  * marked). With [diffColors], and unless [highlightColor] is null, a hunk is marked in the diff colors of the
- * editor color scheme instead: old code fades out in the deleted or modified color, new code keeps the
- * inserted or modified color. All document edits of one transition share an undo group.
+ * editor color scheme instead: old code fades out in the deleted color, new code keeps the inserted color. All document edits of one transition share an undo group.
  */
 class StepTransition(
     private val project: Project,
@@ -61,7 +59,7 @@ class StepTransition(
 ) : Disposable {
 
     private val oldText: CharSequence = document.immutableCharSequence
-    private val changes: List<TextChange> = StepDiff.computeHunks(oldText, newText)
+    private val changes: List<TextChange> = StepDiff.computeEdits(oldText, newText)
     private val removedChars = changes.sumOf { it.removedLength }
     private val insertedChars = changes.sumOf { it.insertedLength }
 
@@ -107,7 +105,7 @@ class StepTransition(
             for (change in changes) {
                 if (change.removedLength > 0) {
                     val selected = TextAttributes().apply {
-                        backgroundColor = diffColor(change, removed = true) ?: selectionColor()
+                        backgroundColor = diffColor(removed = true) ?: selectionColor()
                     }
                     veils += markup.addRangeHighlighter(
                         change.oldStart, change.oldEnd, HIGHLIGHT_LAYER, selected, HighlighterTargetArea.EXACT_RANGE,
@@ -249,14 +247,17 @@ class StepTransition(
         val end = change.newEnd
         if (highlightColor == null || start >= end) return
         val tinted = TextAttributes().apply {
-            backgroundColor = diffColor(change, removed = false)
+            backgroundColor = diffColor(removed = false)
                 ?: ColorUtil.mix(scheme.defaultBackground, highlightColor, TINT)
         }
         val text = document.immutableCharSequence
         // A line break at either end of the range belongs to a line that did not change.
         val first = if (text[start] == '\n' && start > 0 && text[start - 1] != '\n') start + 1 else start
         val last = if (end > first && text[end - 1] == '\n') end - 1 else end
-        into += markup.addRangeHighlighter(first, last, HIGHLIGHT_LAYER, tinted, HighlighterTargetArea.LINES_IN_RANGE)
+        // Whole changed lines are marked to the editor's edge, a change inside a line only where it is.
+        val wholeLines = (first == 0 || text[first - 1] == '\n') && (last == text.length || text[last] == '\n')
+        val area = if (wholeLines) HighlighterTargetArea.LINES_IN_RANGE else HighlighterTargetArea.EXACT_RANGE
+        into += markup.addRangeHighlighter(first, last, HIGHLIGHT_LAYER, tinted, area)
     }
 
     private fun removeTransientHighlighters() {
@@ -268,16 +269,13 @@ class StepTransition(
     private val scheme get() = editor?.colorsScheme ?: EditorColorsManager.getInstance().globalScheme
 
     /**
-     * The background the diff viewer gives [change]: modified when it replaces text, otherwise deleted for
-     * its [removed] text and inserted for its new text. Null when diff colors are off or the scheme has none.
+     * The diff viewer's background for [removed] or inserted text. A replacement shows both, the old text
+     * as deleted and the new text as inserted, so the two never share a color. Null when diff colors are
+     * off or the scheme has none.
      */
-    private fun diffColor(change: TextChange, removed: Boolean): Color? {
+    private fun diffColor(removed: Boolean): Color? {
         if (!diffColors || highlightColor == null) return null
-        val key: TextAttributesKey = when {
-            change.removedLength > 0 && change.insertedLength > 0 -> DiffColors.DIFF_MODIFIED
-            removed -> DiffColors.DIFF_DELETED
-            else -> DiffColors.DIFF_INSERTED
-        }
+        val key = if (removed) DiffColors.DIFF_DELETED else DiffColors.DIFF_INSERTED
         return scheme.getAttributes(key)?.backgroundColor
     }
 

@@ -116,16 +116,16 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEquals(active.hunks().size - 1, active.hunk)
     }
 
-    fun `test changed lines of every hunk of a step stay tinted and the next step starts clean`() {
+    fun `test the changes of every hunk of a step stay tinted and the next step starts clean`() {
         settings.animate = false
         val yellow = CodeStepsSettings.parseColor(settings.highlightColor)
         session.start(createPresentation())
         val document = session.active!!.document
 
         session.nextHunk()
-        assertEquals(listOf("- oat milk"), marked(document, yellow))
+        assertEquals(listOf(" oat"), marked(document, yellow)) // only the added word, not its line
         session.nextHunk()
-        assertEquals(listOf("- oat milk", "- apples"), marked(document, yellow))
+        assertEquals(listOf(" oat", "- apples"), marked(document, yellow))
 
         session.nextStep() // step 3 only removes lines: nothing inserted to mark, old marks gone
         assertEquals(step3, targetText)
@@ -137,7 +137,7 @@ class PresentationSessionTest : BasePlatformTestCase() {
         settings.highlightColor = "00FFFF"
         session.start(createPresentation())
         session.nextStep()
-        assertEquals(listOf("- oat milk", "- apples"), marked(session.active!!.document, Color(0x00FFFF)))
+        assertEquals(listOf(" oat", "- apples"), marked(session.active!!.document, Color(0x00FFFF)))
 
         settings.highlightChanges = false
         session.previousStep()
@@ -146,7 +146,7 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEmpty(marked(session.active!!.document, Color(0x00FFFF)))
     }
 
-    fun `test diff colors mark modified and inserted hunks instead of the tint`() {
+    fun `test diff colors mark removed and new text instead of the tint`() {
         settings.animate = false
         settings.useDiffColors = true
         session.start(createPresentation())
@@ -161,9 +161,22 @@ class PresentationSessionTest : BasePlatformTestCase() {
         }
 
         session.nextStep()
-        assertEquals(listOf("- oat milk"), colored(DiffColors.DIFF_MODIFIED))
-        assertEquals(listOf("- apples"), colored(DiffColors.DIFF_INSERTED))
+        assertEquals(listOf(" oat", "- apples"), colored(DiffColors.DIFF_INSERTED))
         assertEmpty(marked(document, CodeStepsSettings.parseColor(settings.highlightColor)))
+
+        // A replaced word fades out as deleted and comes back as inserted, never both in one color.
+        val replaced = step2.replace("bread", "rye")
+        val transition = StepTransition(
+            project, document, replaced, fadeDurationMs = 100, highlightColor = Color.YELLOW, diffColors = true,
+        )
+        transition.start()
+        assertFalse(transition.advanceTo(50))
+        assertEquals(listOf("bread"), colored(DiffColors.DIFF_DELETED))
+        assertFalse(transition.advanceTo(150))
+        assertEquals(listOf(" oat", "rye", "- apples"), colored(DiffColors.DIFF_INSERTED))
+        assertEmpty(colored(DiffColors.DIFF_DELETED))
+        transition.finish()
+        Disposer.dispose(transition)
     }
 
     fun `test play stops after one step unless it may continue into the next steps`() {

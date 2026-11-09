@@ -28,6 +28,49 @@ object StepDiff {
         return withRepairedGaps(old, new, fragments.map { TextChange(it.startOffset1, it.endOffset1, it.startOffset2, it.endOffset2) })
     }
 
+    /**
+     * The edits that turn [old] into [new], as small as they read well: inside a block of changed lines only
+     * the words that differ are changes, so a renamed call or an added argument does not replace its line.
+     * A block that needs many word edits and keeps little of its text is one change, because a rewrite shown
+     * as scattered word edits is harder to follow than the old lines going and the new lines coming.
+     */
+    fun computeEdits(old: CharSequence, new: CharSequence): List<TextChange> {
+        if (old.contentEquals(new)) return emptyList()
+        val fragments = try {
+            ComparisonManager.getInstance()
+                .compareLinesInner(old, new, ComparisonPolicy.DEFAULT, DumbProgressIndicator.INSTANCE)
+        } catch (_: DiffTooBigException) {
+            return listOf(TextChange(0, old.length, 0, new.length))
+        }
+        return withRepairedGaps(old, new, fragments.flatMap { fragment ->
+            val block = TextChange(fragment.startOffset1, fragment.endOffset1, fragment.startOffset2, fragment.endOffset2)
+            val words = fragment.innerFragments?.map {
+                TextChange(
+                    block.oldStart + it.startOffset1, block.oldStart + it.endOffset1,
+                    block.newStart + it.startOffset2, block.newStart + it.endOffset2,
+                )
+            }
+            if (words != null && keepsEnough(old, new, block, words)) words else listOf(block)
+        })
+    }
+
+    /**
+     * Whether [words] read as edits of [block]: they leave some text untouched, and are either few or leave
+     * at least [KEPT_SHARE] of the longer side untouched.
+     */
+    private fun keepsEnough(old: CharSequence, new: CharSequence, block: TextChange, words: List<TextChange>): Boolean {
+        val oldSize = visibleChars(old, block.oldStart, block.oldEnd)
+        val newSize = visibleChars(new, block.newStart, block.newEnd)
+        val kept = oldSize - words.sumOf { visibleChars(old, it.oldStart, it.oldEnd) }
+        return kept > 0 && (words.size <= FEW_EDITS || kept >= KEPT_SHARE * maxOf(oldSize, newSize))
+    }
+
+    private fun visibleChars(text: CharSequence, start: Int, end: Int): Int =
+        (start until end).count { !text[it].isWhitespace() }
+
+    private const val KEPT_SHARE = 0.5
+    private const val FEW_EDITS = 2
+
     /** The text after applying the first [count] of [hunks] (computed from [old] to [new]) to [old]. */
     fun applyFirst(old: CharSequence, new: CharSequence, hunks: List<TextChange>, count: Int): String {
         if (count <= 0) return old.toString()

@@ -23,7 +23,25 @@ class StepDiffTest : BasePlatformTestCase() {
         for (count in 0..hunks.size) {
             assertEquals(apply(old, new, hunks.take(count)), StepDiff.applyFirst(old, new, hunks, count))
         }
+        // Word-level edits reconstruct the new text just the same.
+        assertEquals(new, apply(old, new, StepDiff.computeEdits(old, new)))
         return hunks
+    }
+
+    private fun edits(old: String, new: String): List<Pair<String, String>> =
+        StepDiff.computeEdits(old, new).map { old.substring(it.oldStart, it.oldEnd) to new.substring(it.newStart, it.newEnd) }
+
+    fun `test a changed line is edited where it differs, a rewritten block is replaced as a whole`() {
+        assertEquals(listOf("" to ", tax"), edits("a\nval sum = total(items)\nb\n", "a\nval sum = total(items, tax)\nb\n"))
+        assertEquals(listOf("total" to "sum"), edits("  return total\n", "  return sum\n"))
+        assertEquals(listOf("" to "new line\n"), edits("a\nb\n", "a\nnew line\nb\n"))
+        assertEquals(
+            listOf("  var sum = 0\n  for (item in items) sum += item.price\n  return sum\n" to "  return items.sumOf { item -> item.price }\n"),
+            edits(
+                "fun total(items) {\n  var sum = 0\n  for (item in items) sum += item.price\n  return sum\n}\n",
+                "fun total(items) {\n  return items.sumOf { item -> item.price }\n}\n",
+            ),
+        )
     }
 
     fun `test reconstructs the new text`() {

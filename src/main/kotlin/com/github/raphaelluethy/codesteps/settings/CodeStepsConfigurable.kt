@@ -32,7 +32,7 @@ class CodeStepsConfigurable : BoundConfigurable("Code Steps") {
                 row {
                     checkBox("Use the diff colors of the editor color scheme")
                         .bindSelected(state::useDiffColors)
-                        .comment("Old code fades out in the deleted or modified color, new code keeps the inserted or modified color.")
+                        .comment("Old code fades out in the deleted color, new code keeps the inserted color.")
                 }
             }.enabledIf(tint.selected)
             row("Play pauses between hunks for:") {
