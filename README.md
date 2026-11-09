@@ -12,64 +12,61 @@ hunks play one at a time, top to bottom, in the normal editor.
 - **Plain files in Git.** Presentations live in `.codesteps/` inside the project. Commit them, review them in
   pull requests, and share them by cloning the repository.
 
-## Recording a refactoring
+## Quick start
 
-1. Open the file and run **Tools | Code Steps | Start Recording** (also in the editor context menu). Its current
-   content becomes the first step, and a red banner shows that recording is on.
-2. Do the refactoring as usual. Whenever you reach a point the audience should see, run **Capture Step** or commit
-   in the IDE: each commit that includes the file adds a step named after the commit message.
-3. Run **Stop Recording**. It captures the final content and offers to start the presentation.
+There is nothing to configure.
+
+1. Install the plugin ZIP with **Settings | Plugins | ⚙ | Install Plugin from Disk** (see [Building](#building)).
+2. Open a file, right-click in the editor, and choose **Start Recording**. The file as it is now becomes step 1,
+   and a red banner shows that recording is on.
+3. Edit as usual. Whenever you reach a point the audience should see, choose **Capture Step**, or commit in the
+   IDE: each commit that includes the file adds a step named after the commit message.
+4. Click **Stop recording** in the banner, then **Start presentation** in the notification.
+5. Click **Next ▶** in the banner above the editor to show one change at a time.
 
 A step can hold many separate edits; playback splits it into hunks, so capturing coarse steps is fine.
-You can also build a presentation by hand with **Capture Step**, or write the files yourself (see below).
+Without a recording, **Capture Step** adds the current content to the file's presentation and creates it on first
+use. You can also write the files yourself (see [File format](#file-format)).
 
 ## Presenting
 
-Run **Tools | Code Steps | Start Presentation**. The file shows step 1, and a banner above the editor shows the
-position (step, and hunk within the change to the next step) with the controls.
+**Start Presentation** is in the main toolbar once the project has a `.codesteps/` folder, and under
+**Tools | Code Steps**. The file shows step 1, and a banner above the editor shows the position (step, and hunk
+within the change to the next step) with **◀ Back**, **Next ▶**, **Play**, **Projector**, and **Stop**.
 
 | Action | Windows / Linux | What it does |
 | --- | --- | --- |
-| Play / Pause | `Ctrl+Alt+Shift+Space` | Plays the hunks one at a time with a pause between them. Pause lets the current hunk finish. |
-| Next hunk | `Ctrl+Alt+Shift+]` | Shows the next hunk: the old block goes, the new block comes. |
-| Previous hunk | `Ctrl+Alt+Shift+[` | Takes back the last hunk. |
+| Next hunk (**Next ▶**) | `Ctrl+Alt+Shift+]` | Shows the next hunk: the old block goes, the new block comes. |
+| Previous hunk (**◀ Back**) | `Ctrl+Alt+Shift+[` | Takes back the last hunk. |
+| Play / Pause | `Ctrl+Alt+Shift+Space` | Plays the hunks of the step one at a time with a pause between them. Pause lets the current hunk finish. |
 | Next step | `Ctrl+Alt+Shift+.` | Plays the rest of the step hunk by hunk; press again to complete it at once. |
 | Previous step | `Ctrl+Alt+Shift+,` | Goes back to the start of the step, or to the previous step. |
-| First / last step | `Ctrl+Alt+Shift+Home` / `End` | |
-| Faster / slower | `Ctrl+Alt+Shift+=` / `-` | Playback speed from 0.5× to 3×; also the Speed link in the banner. |
 
 On macOS, Next and Previous step are `⌘⌥⇧.` and `⌘⌥⇧,`. Change or add shortcuts under
-**Settings | Keymap | Plugins | Code Steps**. The controls also appear in the main toolbar while a presentation
-runs. **Stop Presentation** puts back the content the file had before you started.
+**Settings | Keymap | Plugins | Code Steps**. **Stop** puts back the content the file had before you started.
+
+A change looks like an edit made by hand, without the typing. The old code is selected, in the editor's selection
+color, and fades out. The space it took slides open or closed to fit the new code, so the code below moves to its
+new place and never jumps. Then the new code fades in. Changed lines keep a soft tint until the next step; the
+text keeps its syntax colors. Removed code leaves no mark.
 
 The editor keeps the active hunk centered. While presenting you can type freely; **Save Editor to Current Step**
 overwrites the current step, and **Capture Step** inserts the editor content as a new step after it.
 
-### Transition styles
-
-- **Hunks: fade out old block, fade in new block** (default). Each hunk changes as one unit, so rewritten code
-  never looks fragmented.
-- **Hunks: fade out old block, type new block.** The new block is typed character by character.
-- **Highlight: no motion.** The new text appears at once, and the changed lines get a solid marker-pen highlight.
-  Removed lines are marked with a red bar.
-- **Words: fade / type changed words.** The earlier, fine-grained styles, which animate only the changed words.
-- **Instant.**
-
-Changed text is highlighted in yellow (configurable) with bold black text, and removed text fades out in red. The
-colors are saturated so they stay visible on washed-out projectors, on light and dark themes.
-
-### Projector mode
-
-**Projector Mode** (toolbar or banner link) enlarges the presented editor (28 pt by default), hides the tool windows,
-hides the folding outline and intention bulbs, and enlarges the banner so it reads from the back of the room.
-Turning it off or stopping the presentation restores everything.
+**Projector** enlarges the presented editor (28 pt by default), hides the tool windows, the folding outline and
+the intention bulbs, and enlarges the banner so it reads from the back of the room. Turning it off or stopping the
+presentation restores everything.
 
 ## Settings
 
-**Settings | Tools | Code Steps** holds personal preferences, stored in the IDE configuration and not in the project:
-transition style, fade duration (900 ms), typing speed (35 characters per second), the longest typing animation per
-hunk, highlight on or off and its color, the pause between hunks (800 ms, doubled after a finished step), the speed,
-whether Play continues into the next step, whether Stop restores the file, and the projector font size.
+**Settings | Tools | Code Steps** holds the personal preferences, stored in the IDE configuration and not in the
+project:
+
+- **Animate changes** and how long a fade takes (900 ms). Off, each change appears at once.
+- **Tint changed lines** and the tint color (yellow).
+- How long Play pauses between hunks (800 ms, doubled after a finished step).
+- Whether Play continues into the next step.
+- The projector mode font size.
 
 ## File format
 

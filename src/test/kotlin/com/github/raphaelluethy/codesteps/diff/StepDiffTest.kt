@@ -15,17 +15,15 @@ class StepDiffTest : BasePlatformTestCase() {
     }
 
     private fun check(old: String, new: String): List<TextChange> {
-        val changes = StepDiff.compute(old, new)
-        assertEquals(new, apply(old, new, changes))
-        changes.zipWithNext().forEach { (a, b) -> assertTrue(a.newEnd <= b.newStart) }
-
-        // Playing hunks one by one passes through exactly these intermediate texts and ends on the new text.
         val hunks = StepDiff.computeHunks(old, new)
         assertEquals(new, apply(old, new, hunks))
+        hunks.zipWithNext().forEach { (a, b) -> assertTrue(a.newEnd <= b.newStart) }
+
+        // Playing hunks one by one passes through exactly these intermediate texts and ends on the new text.
         for (count in 0..hunks.size) {
             assertEquals(apply(old, new, hunks.take(count)), StepDiff.applyFirst(old, new, hunks, count))
         }
-        return changes
+        return hunks
     }
 
     fun `test reconstructs the new text`() {
@@ -51,15 +49,6 @@ class StepDiffTest : BasePlatformTestCase() {
         }
     }
 
-    fun `test changes inside a line are word sized`() {
-        val old = "val total = price * quantity\nprintln(total)\n"
-        val new = "val total = price * amount\nprintln(total)\n"
-        val changes = check(old, new)
-        assertEquals(1, changes.size)
-        assertEquals("quantity", old.substring(changes[0].oldStart, changes[0].oldEnd))
-        assertEquals("amount", new.substring(changes[0].newStart, changes[0].newEnd))
-    }
-
     fun `test a rewritten block is one hunk and separate edits are separate hunks, top to bottom`() {
         val old = "fun total(items) {\n  var sum = 0\n  for (item in items) sum += item.price\n  return sum\n}\n\nfun main() {}\n"
         val new = "fun total(items) {\n  return items.sumOf { item -> item.price }\n}\n\nfun main() = println(total(listOf()))\n"
@@ -75,6 +64,6 @@ class StepDiffTest : BasePlatformTestCase() {
     }
 
     fun `test identical texts have no changes`() {
-        assertEmpty(StepDiff.compute("same\n", "same\n"))
+        assertEmpty(check("same\n", "same\n"))
     }
 }

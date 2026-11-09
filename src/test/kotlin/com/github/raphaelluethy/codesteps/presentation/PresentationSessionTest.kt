@@ -1,7 +1,6 @@
 package com.github.raphaelluethy.codesteps.presentation
 
 import com.github.raphaelluethy.codesteps.settings.CodeStepsSettings
-import com.github.raphaelluethy.codesteps.settings.TransitionStyle
 import com.github.raphaelluethy.codesteps.storage.ManifestFormat
 import com.github.raphaelluethy.codesteps.storage.PresentationStorage
 import com.intellij.openapi.command.WriteCommandAction
@@ -12,6 +11,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.awt.Color
+import kotlin.math.abs
 
 class PresentationSessionTest : BasePlatformTestCase() {
     private val step1 = "Shopping list\n- milk\n- bread\n"
@@ -55,27 +55,29 @@ class PresentationSessionTest : BasePlatformTestCase() {
     private val targetText: String
         get() = FileDocumentManager.getInstance().getDocument(myFixture.findFileInTempDir("notes/list.txt"))!!.text
 
-    /** Text covered by highlighters painted in [color], in document order. */
+    /** Text of the highlighters tinted with [color], in document order. A tint is a light wash of the color with the same hue. */
     private fun marked(document: Document, color: Color): List<String> =
         DocumentMarkupModel.forDocument(document, project, true).allHighlighters
-            .filter { it.getTextAttributes(null)?.backgroundColor == color }
+            .filter { it.getTextAttributes(null)?.backgroundColor?.let { tint -> abs(hue(tint) - hue(color)) < 0.02 } == true }
             .sortedBy { it.startOffset }
             .map { document.charsSequence.substring(it.startOffset, it.endOffset) }
 
+    private fun hue(color: Color): Float = Color.RGBtoHSB(color.red, color.green, color.blue, null)[0]
+
     fun `test steps forward and back in the target document and restores it on stop`() {
-        settings.transition = TransitionStyle.INSTANT
+        settings.animate = false
         session.start(createPresentation())
         assertEquals(step1, targetText)
 
         session.nextStep()
         assertEquals(step2, targetText)
-        session.last()
+        session.nextStep()
         assertEquals(step3, targetText)
         session.nextStep() // already at the last step
         assertEquals(step3, targetText)
         session.previousStep()
         assertEquals(step2, targetText)
-        session.first()
+        session.previousStep()
         assertEquals(step1, targetText)
 
         session.stop()
@@ -84,7 +86,7 @@ class PresentationSessionTest : BasePlatformTestCase() {
     }
 
     fun `test hunks play one at a time, top to bottom, and step back across steps`() {
-        settings.transition = TransitionStyle.INSTANT
+        settings.animate = false
         session.start(createPresentation())
         val active = session.active!!
         assertEquals(2, active.hunks().size)
@@ -104,15 +106,15 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEquals(step1, targetText)
         assertTrue(active.isAtStart)
 
-        session.last()
+        session.nextStep()
+        session.nextStep()
         session.previousHunk() // crosses back into the change from step 2 to step 3
         assertEquals(1, active.index)
         assertEquals(active.hunks().size - 1, active.hunk)
     }
 
-    fun `test highlight mode marks every hunk of a step and starts clean on the next step`() {
-        settings.transition = TransitionStyle.HIGHLIGHT
-        settings.highlightChanges = false // the highlight style marks changes regardless
+    fun `test changed lines of every hunk of a step stay tinted and the next step starts clean`() {
+        settings.animate = false
         val yellow = CodeStepsSettings.parseColor(settings.highlightColor)
         session.start(createPresentation())
         val document = session.active!!.document
@@ -127,16 +129,22 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEmpty(marked(document, yellow))
     }
 
-    fun `test the highlight color comes from the settings`() {
-        settings.transition = TransitionStyle.HIGHLIGHT
+    fun `test the tint color comes from the settings and the tint can be turned off`() {
+        settings.animate = false
         settings.highlightColor = "00FFFF"
         session.start(createPresentation())
         session.nextStep()
         assertEquals(listOf("- oat milk", "- apples"), marked(session.active!!.document, Color(0x00FFFF)))
+
+        settings.highlightChanges = false
+        session.previousStep()
+        session.nextStep()
+        assertEquals(step2, targetText)
+        assertEmpty(marked(session.active!!.document, Color(0x00FFFF)))
     }
 
     fun `test play stops after one step unless it may continue into the next steps`() {
-        settings.transition = TransitionStyle.HIGHLIGHT
+        settings.animate = false
         settings.hunkPauseMs = 5
         session.start(createPresentation())
 
@@ -146,7 +154,7 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEquals(1, session.active!!.index)
 
         settings.playAcrossSteps = true
-        session.first()
+        session.previousStep()
         session.togglePlay()
         waitWhilePlaying()
         assertEquals(step3, targetText)
@@ -163,7 +171,7 @@ class PresentationSessionTest : BasePlatformTestCase() {
     }
 
     fun `test capturing while presenting inserts a step after the current one`() {
-        settings.transition = TransitionStyle.INSTANT
+        settings.animate = false
         session.start(createPresentation())
         val document = session.active!!.document
         WriteCommandAction.runWriteCommandAction(project) { document.setText("Shopping list\n- milk\n- bread\n- eggs\n") }
@@ -183,14 +191,11 @@ class PresentationSessionTest : BasePlatformTestCase() {
         assertEquals(step2, targetText)
     }
 
-    fun `test hunk style fades out a rewritten block as a whole, not word by word`() {
+    fun `test a rewritten block fades out as a whole, not word by word`() {
         val old = "fun total(items) {\n  var sum = 0\n  for (item in items) sum += item.price\n  return sum\n}\n"
         val new = "fun total(items) {\n  return items.sumOf { item -> item.price }\n}\n"
         val document = myFixture.configureByText("total.txt", old).fileDocument
-        val transition = StepTransition(
-            project, document, new,
-            StepTransition.Options(TransitionStyle.HUNKS, true, 100, 10, 60_000),
-        )
+        val transition = StepTransition(project, document, new, fadeDurationMs = 100, highlightColor = Color.YELLOW)
         transition.start()
         assertFalse(transition.advanceTo(50))
         val markup = DocumentMarkupModel.forDocument(document, project, true)
@@ -209,34 +214,38 @@ class PresentationSessionTest : BasePlatformTestCase() {
         Disposer.dispose(transition)
     }
 
-    fun `test typewriter animation types in order and ends on the step text`() {
-        session.start(createPresentation())
-        val document = session.active!!.document
+    fun `test code below a rewritten block slides to its new place instead of jumping`() {
+        val old = "fun total(items) {\n  var sum = 0\n  for (item in items) sum += item.price\n  return sum\n}\n"
+        val new = "fun total(items) {\n  return items.sumOf { item -> item.price }\n}\n"
+        myFixture.configureByText("total.txt", old)
+        val editor = myFixture.editor
+        val document = editor.document
+        val lineHeight = editor.lineHeight
+        fun closingBraceY() = editor.offsetToXY(document.text.lastIndexOf('}')).y
         val transition = StepTransition(
-            project, document, step2,
-            StepTransition.Options(TransitionStyle.TYPEWRITER, true, 100, 10, 60_000),
+            project, document, new, fadeDurationMs = 100, highlightColor = Color.YELLOW, editor = editor,
         )
-        // Nothing is removed, so there is no fade-out; "oat " and "- apples\n" are 13 characters at 10 per second.
-        assertEquals(1300L, transition.durationMs)
+        // Fading out and in take 100 ms each, closing the space of two lines half of that.
+        assertEquals(250L, transition.durationMs)
         transition.start()
-
-        assertFalse(transition.advanceTo(400))
-        assertEquals("Shopping list\n- oat milk\n- bread\n", document.text)
-        // A new line opens first, so the text after it keeps its own line while typing.
-        assertFalse(transition.advanceTo(800))
-        assertEquals("Shopping list\n- oat milk\n- bread\n- a\n", document.text)
-        assertTrue(transition.advanceTo(1300))
-        assertEquals(step2, document.text)
+        assertEquals(4 * lineHeight, closingBraceY())
+        assertFalse(transition.advanceTo(100))
+        assertEquals("fun total(items) {\n}\n", document.text)
+        assertEquals(4 * lineHeight, closingBraceY()) // the three old lines are gone, their space is still there
+        assertFalse(transition.advanceTo(125))
+        assertEquals(3 * lineHeight, closingBraceY())
+        assertFalse(transition.advanceTo(150))
+        assertEquals(new, document.text)
+        assertEquals(2 * lineHeight, closingBraceY()) // the new line fades in where the space was
+        assertTrue(transition.advanceTo(250))
+        assertEquals(2 * lineHeight, closingBraceY())
         Disposer.dispose(transition)
     }
 
     fun `test fade animation removes text before inserting and survives external edits`() {
         session.start(createPresentation())
         val document = session.active!!.document
-        val transition = StepTransition(
-            project, document, step3,
-            StepTransition.Options(TransitionStyle.FADE, true, 200, 10, 1000),
-        )
+        val transition = StepTransition(project, document, step3, fadeDurationMs = 200, highlightColor = Color.YELLOW)
         transition.start()
         assertFalse(transition.advanceTo(100))
         assertEquals(step1, document.text) // removed text still fading out

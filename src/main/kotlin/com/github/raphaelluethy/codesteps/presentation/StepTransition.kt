@@ -2,96 +2,76 @@ package com.github.raphaelluethy.codesteps.presentation
 
 import com.github.raphaelluethy.codesteps.diff.StepDiff
 import com.github.raphaelluethy.codesteps.diff.TextChange
-import com.github.raphaelluethy.codesteps.settings.InsertMode
-import com.github.raphaelluethy.codesteps.settings.TransitionStyle
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.EditorCustomElementRenderer
+import com.intellij.openapi.editor.Inlay
+import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.openapi.editor.colors.EditorColorsManager
-import com.intellij.openapi.editor.ex.RangeHighlighterEx
+import com.intellij.openapi.editor.colors.EditorFontType
+import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
+import com.intellij.openapi.editor.markup.CustomHighlighterOrder
 import com.intellij.openapi.editor.markup.CustomHighlighterRenderer
-import com.intellij.openapi.editor.markup.EffectType
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
-import com.intellij.openapi.editor.markup.LineMarkerRendererEx
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.ColorUtil
-import com.intellij.util.ui.JBUI
 import java.awt.Color
-import java.awt.Font
 import java.awt.Graphics
-import java.awt.Rectangle
 import javax.swing.Timer
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 /**
- * Turns the current text of [document] into [newText], optionally animated:
- * removed text fades out and is deleted, then inserted text fades or is typed in.
- * Hunk styles treat each block of changed lines as one unit; word styles animate changed words.
+ * Turns the current text of [document] into [newText], animated like an edit made by hand, minus the
+ * typing: each block of changed lines is selected and fades out, the space it took slides to the size
+ * of the new lines, and the new lines fade in. Text fades with its own syntax colors, and in [editor]
+ * the code around a change slides instead of jumping. With a [fadeDurationMs] of 0 the change is applied at once.
  * Everything works on plain document text, so it behaves the same for every file type.
  *
- * Final change highlights go to [highlights], which the caller owns, so highlights can outlive
- * the transition (for example all hunks of a step stay marked). All document edits of one
- * transition share an undo group.
+ * Changed lines keep a soft tint of [highlightColor]; null leaves no mark. The tints go to [highlights],
+ * which the caller owns, so they can outlive the transition (for example all hunks of a step stay
+ * marked). All document edits of one transition share an undo group.
  */
 class StepTransition(
     private val project: Project,
     private val document: Document,
     private val newText: String,
-    private val options: Options,
+    private val fadeDurationMs: Int,
+    private val highlightColor: Color?,
     private val highlights: MutableList<RangeHighlighter> = mutableListOf(),
+    private val editor: Editor? = null,
     private val onProgress: (offset: Int) -> Unit = {},
     private val onFinished: () -> Unit = {},
 ) : Disposable {
 
-    data class Options(
-        val style: TransitionStyle,
-        val highlightChanges: Boolean,
-        val fadeDurationMs: Int,
-        val typingCharsPerSecond: Int,
-        val maxTypingDurationMs: Int,
-        val highlightColor: Color = Color(0xFFE600),
-    )
-
-    private val style = options.style
-    private val highlight = when (style) {
-        TransitionStyle.HIGHLIGHT -> true
-        TransitionStyle.INSTANT -> false
-        else -> options.highlightChanges
-    }
-
-    private val changes: List<TextChange> =
-        if (style.wholeHunks) StepDiff.computeHunks(document.immutableCharSequence, newText)
-        else StepDiff.compute(document.immutableCharSequence, newText)
-    private val typingChanges: List<TextChange> =
-        changes.mapIndexed { i, change -> openLineFirst(change, if (i == 0) 0 else changes[i - 1].newEnd) }
+    private val oldText: CharSequence = document.immutableCharSequence
+    private val changes: List<TextChange> = StepDiff.computeHunks(oldText, newText)
     private val removedChars = changes.sumOf { it.removedLength }
     private val insertedChars = changes.sumOf { it.insertedLength }
 
-    private val fadeOutMs: Long = if (!style.fadesOut || removedChars == 0) 0 else options.fadeDurationMs.toLong()
-    private val insertMs: Long = when {
-        insertedChars == 0 -> 0
-        style.insertMode == InsertMode.FADE -> options.fadeDurationMs.toLong()
-        style.insertMode == InsertMode.TYPE ->
-            min(insertedChars * 1000L / options.typingCharsPerSecond.coerceAtLeast(1), options.maxTypingDurationMs.toLong())
-        else -> 0
-    }
+    private val gapPlans: List<GapPlan> = planGaps()
+
+    private val fadeOutMs: Long = if (removedChars == 0) 0 else fadeDurationMs.toLong()
+    private val moveMs: Long = if (gapPlans.isEmpty()) 0 else fadeDurationMs / 2L
+    private val fadeInMs: Long = if (insertedChars == 0) 0 else fadeDurationMs.toLong()
 
     /** Total animation time; 0 means the change is applied at once. */
-    val durationMs: Long get() = fadeOutMs + insertMs
+    val durationMs: Long get() = fadeOutMs + moveMs + fadeInMs
 
     /** Where the change starts (the same offset before and after) and how many lines it spans at most. */
     val focus: Pair<Int, Int>? = changes.firstOrNull()?.let { first ->
         val last = changes.last()
-        val oldText = document.immutableCharSequence
         val oldLines = oldText.subSequence(first.oldStart, last.oldEnd).count { it == '\n' }
         val newLines = newText.subSequence(first.newStart, last.newEnd).count { it == '\n' }
         first.newStart to max(oldLines, newLines) + 1
@@ -99,14 +79,12 @@ class StepTransition(
 
     private val markup = DocumentMarkupModel.forDocument(document, project, true)
     private val transientHighlighters = mutableListOf<RangeHighlighter>()
-    private val typingSpans = mutableListOf<RangeHighlighter>()
+    private val veils = mutableListOf<RangeHighlighter>()
+    private val gaps = mutableListOf<Gap>()
     private val groupId = Any()
 
     private var deleted = false
-    private var fadeInserted = false
-    private var typedChars = 0
-    private var typingChange = 0
-    private var typingOffset = 0
+    private var inserted = false
     private var expectedStamp = document.modificationStamp
     private var timer: Timer? = null
 
@@ -120,9 +98,16 @@ class StepTransition(
         }
         focus?.let { (offset, _) -> onProgress(offset) }
         if (fadeOutMs > 0) {
+            // Like a selection, the range includes its line breaks, so removed lines are marked up to the editor's edge.
+            val selected = TextAttributes().apply { backgroundColor = selectionColor() }
             for (change in changes) {
-                if (change.removedLength > 0) transientHighlighters += addSpans(change.oldStart, change.oldEnd, fadeOutAttributes(0.0))
+                if (change.removedLength > 0) {
+                    veils += markup.addRangeHighlighter(
+                        change.oldStart, change.oldEnd, HIGHLIGHT_LAYER, selected, HighlighterTargetArea.EXACT_RANGE,
+                    )
+                }
             }
+            transientHighlighters += veils
         }
         val startNanos = System.nanoTime()
         // Timer events do not hold the write-intent lock that document edits need; invokeLater does.
@@ -146,23 +131,25 @@ class StepTransition(
             return true
         }
         if (elapsedMs < fadeOutMs) {
-            setTransientAttributes(fadeOutAttributes(elapsedMs.toDouble() / fadeOutMs))
+            // A slow start, so the audience sees what is selected before it goes.
+            setVeil((elapsedMs.toDouble() / fadeOutMs).pow(3))
             return false
         }
-        val insertElapsed = elapsedMs - fadeOutMs
-        if (insertElapsed >= insertMs) {
+        val moveElapsed = elapsedMs - fadeOutMs
+        val insertElapsed = moveElapsed - moveMs
+        if (insertElapsed >= fadeInMs) {
             finish()
             return true
         }
         deleteRemovedText()
-        when (style.insertMode) {
-            InsertMode.FADE -> {
-                insertAll()
-                setTransientAttributes(fadeInAttributes(insertElapsed.toDouble() / insertMs))
-            }
-            InsertMode.TYPE -> typeUpTo((insertElapsed * insertedChars / insertMs).toInt())
-            InsertMode.NONE -> Unit
+        if (moveElapsed < moveMs) {
+            resizeGaps(easeInOut(moveElapsed.toDouble() / moveMs))
+            return false
         }
+        closeGaps()
+        insertAll()
+        // A fast start, so the new text is readable early and then settles.
+        setVeil((1 - insertElapsed.toDouble() / fadeInMs).pow(3))
         return false
     }
 
@@ -172,13 +159,17 @@ class StepTransition(
         isFinished = true
         timer?.stop()
         timer = null
+        closeGaps()
         if (document.modificationStamp == expectedStamp) {
             deleteRemovedText()
-            if (style.insertMode == InsertMode.TYPE) typeUpTo(insertedChars) else insertAll()
+            insertAll()
         }
         if (document.text != newText) edit { document.replaceString(0, document.textLength, newText) }
         removeTransientHighlighters()
-        if (highlight && document.text == newText) addResultHighlighters()
+        if (document.text == newText) {
+            // Removed text leaves nothing behind.
+            for (change in changes) addTint(change.newStart, change.newEnd, highlights)
+        }
         onFinished()
     }
 
@@ -186,23 +177,27 @@ class StepTransition(
         timer?.stop()
         timer = null
         isFinished = true
+        closeGaps()
         removeTransientHighlighters()
     }
 
-    private fun setTransientAttributes(attributes: TextAttributes) {
-        transientHighlighters.forEach { (it as? RangeHighlighterEx)?.setTextAttributes(attributes) }
+    /** Hides the veiled text by [opacity]; a new renderer makes the editors repaint the range. */
+    private fun setVeil(opacity: Double) {
+        veils.forEach { it.customRenderer = Veil(opacity) }
     }
 
     private fun deleteRemovedText() {
         if (deleted) return
         deleted = true
         removeTransientHighlighters()
-        if (removedChars == 0) return
-        edit {
-            for (change in changes.asReversed()) {
-                if (change.removedLength > 0) document.deleteString(change.oldStart, change.oldEnd)
+        if (removedChars > 0) {
+            edit {
+                for (change in changes.asReversed()) {
+                    if (change.removedLength > 0) document.deleteString(change.oldStart, change.oldEnd)
+                }
             }
         }
+        if (!isFinished) openGaps()
     }
 
     /**
@@ -210,8 +205,8 @@ class StepTransition(
      * the text before change k already equals the new text up to `newStart`.
      */
     private fun insertAll() {
-        if (fadeInserted) return
-        fadeInserted = true
+        if (inserted) return
+        inserted = true
         if (insertedChars == 0) return
         edit {
             for (change in changes) {
@@ -220,64 +215,17 @@ class StepTransition(
                 }
             }
         }
-        for (change in changes) {
-            if (change.insertedLength > 0) transientHighlighters += addSpans(change.newStart, change.newEnd, fadeInAttributes(0.0))
+        if (!isFinished) {
+            for (change in changes) {
+                if (change.insertedLength == 0) continue
+                addTint(change.newStart, change.newEnd, transientHighlighters)
+                veils += markup.addRangeHighlighter(
+                    change.newStart, change.newEnd, HIGHLIGHT_LAYER, null, HighlighterTargetArea.EXACT_RANGE,
+                )
+            }
+            transientHighlighters += veils
         }
         onProgress(changes.first { it.insertedLength > 0 }.newStart)
-    }
-
-    /** Types inserted text in document order until [target] characters are typed in total. */
-    private fun typeUpTo(target: Int) {
-        if (typedChars >= target) return
-        var caret = -1
-        edit {
-            while (typedChars < target && typingChange < typingChanges.size) {
-                val change = typingChanges[typingChange]
-                val count = min(change.insertedLength - typingOffset, target - typedChars)
-                if (count > 0) {
-                    val offset = change.newStart + typingOffset
-                    document.insertString(offset, newText.substring(offset, offset + count))
-                    typingOffset += count
-                    typedChars += count
-                    caret = offset + count
-                }
-                if (typingOffset == change.insertedLength) {
-                    typingChange++
-                    typingOffset = 0
-                    // Keep the finished change marked while the next one is typed.
-                    if (highlight) transientHighlighters += addSpans(change.newStart, change.newEnd, markerAttributes())
-                }
-            }
-        }
-        if (highlight) {
-            typingSpans.forEach { it.dispose() }
-            typingSpans.clear()
-            typingChanges.getOrNull(typingChange)?.takeIf { typingOffset > 0 }?.let { change ->
-                typingSpans += addSpans(change.newStart, change.newStart + typingOffset, markerAttributes())
-            }
-        }
-        if (caret >= 0) onProgress(caret)
-    }
-
-    /**
-     * Line diffs report an inserted line as "text, line break, next line's indent". Typed in that order, the
-     * following line hangs at the end of the half-typed line. Rotating the insertion left through the
-     * identical text before it (for example to "line break, indent, text") opens the new line first.
-     * Any rotation is equivalent, since the skipped text is unchanged in both versions.
-     */
-    private fun openLineFirst(change: TextChange, minStart: Int): TextChange {
-        if (change.insertedLength == 0 || newText.indexOf('\n', change.newStart) !in change.newStart until change.newEnd) {
-            return change
-        }
-        var start = change.newStart
-        var end = change.newEnd
-        while (newText[start] != '\n' && start > minStart && newText[start - 1] == newText[end - 1]) {
-            start--
-            end--
-        }
-        if (newText[start] != '\n') return change
-        val shift = change.newStart - start
-        return TextChange(change.oldStart - shift, change.oldEnd - shift, start, end)
     }
 
     private fun edit(block: () -> Unit) {
@@ -288,108 +236,132 @@ class StepTransition(
         expectedStamp = document.modificationStamp
     }
 
-    private fun addResultHighlighters() {
-        val stripe = Palette.stripe(options.highlightColor, scheme.defaultBackground)
-        for (change in changes) {
-            if (change.insertedLength == 0) {
-                val mark = markup.addRangeHighlighter(
-                    change.newStart, change.newStart, HIGHLIGHT_LAYER, null, HighlighterTargetArea.EXACT_RANGE,
-                )
-                mark.customRenderer = DeletionMark(Palette.REMOVED)
-                mark.lineMarkerRenderer = GutterMarker(Palette.REMOVED, deletion = true)
-                highlights += mark
-                continue
-            }
-            highlights += addSpans(change.newStart, change.newEnd, markerAttributes())
-            val end = if (newText[change.newEnd - 1] == '\n') change.newEnd - 1 else change.newEnd
-            val line = markup.addRangeHighlighter(
-                change.newStart, max(change.newStart, end), HIGHLIGHT_LAYER, null, HighlighterTargetArea.LINES_IN_RANGE,
-            )
-            line.lineMarkerRenderer = GutterMarker(stripe, deletion = false)
-            highlights += line
+    /** Marks the lines of `[start, end)` as changed with a soft tint that keeps the syntax colors. */
+    private fun addTint(start: Int, end: Int, into: MutableList<RangeHighlighter>) {
+        if (highlightColor == null || start >= end) return
+        val tinted = TextAttributes().apply {
+            backgroundColor = ColorUtil.mix(scheme.defaultBackground, highlightColor, TINT)
         }
+        val text = document.immutableCharSequence
+        // A line break at either end of the range belongs to a line that did not change.
+        val first = if (text[start] == '\n' && start > 0 && text[start - 1] != '\n') start + 1 else start
+        val last = if (end > first && text[end - 1] == '\n') end - 1 else end
+        into += markup.addRangeHighlighter(first, last, HIGHLIGHT_LAYER, tinted, HighlighterTargetArea.LINES_IN_RANGE)
     }
 
     private fun removeTransientHighlighters() {
         transientHighlighters.forEach { it.dispose() }
         transientHighlighters.clear()
-        typingSpans.forEach { it.dispose() }
-        typingSpans.clear()
+        veils.clear()
     }
 
-    /** Highlights the text of every line in `[start, end)`, skipping indentation and line breaks, like a marker pen. */
-    private fun addSpans(start: Int, end: Int, attributes: TextAttributes): List<RangeHighlighter> {
-        val text = document.immutableCharSequence
-        val result = mutableListOf<RangeHighlighter>()
-        if (start >= end) return result
-        for (line in document.getLineNumber(start)..document.getLineNumber(end)) {
-            val lineStart = document.getLineStartOffset(line)
-            val lineEnd = document.getLineEndOffset(line)
-            var textStart = lineStart
-            while (textStart < lineEnd && (text[textStart] == ' ' || text[textStart] == '\t')) textStart++
-            val s = max(start, textStart)
-            val e = min(end, lineEnd)
-            if (s < e) result += markup.addRangeHighlighter(s, e, HIGHLIGHT_LAYER, attributes, HighlighterTargetArea.EXACT_RANGE)
-        }
-        return result
+    private val scheme get() = editor?.colorsScheme ?: EditorColorsManager.getInstance().globalScheme
+
+    private fun selectionColor(): Color = scheme.getColor(EditorColors.SELECTION_BACKGROUND_COLOR)
+        ?: ColorUtil.mix(scheme.defaultBackground, scheme.defaultForeground, 0.25)
+
+    // Gaps
+
+    /** Empty space at [offset] of the document without the removed text, sliding from [from] to [to] pixels. */
+    private class GapPlan(val offset: Int, val block: Boolean, val above: Boolean, val from: Int, val to: Int)
+
+    private class Gap(val inlay: Inlay<GapRenderer>, val plan: GapPlan)
+
+    /** Empty space in the editor: [size] pixels of height between lines, or of width inside a line. */
+    private class GapRenderer(private val block: Boolean, var size: Int) : EditorCustomElementRenderer {
+        // An inlay inside a line must be at least one pixel wide.
+        override fun calcWidthInPixels(inlay: Inlay<*>) = if (block) 0 else max(1, size)
+        override fun calcHeightInPixels(inlay: Inlay<*>) = if (block) size else inlay.editor.lineHeight
     }
 
-    private val scheme get() = EditorColorsManager.getInstance().globalScheme
-
-    private fun markerAttributes() = TextAttributes().apply {
-        backgroundColor = options.highlightColor
-        foregroundColor = Palette.textOn(options.highlightColor)
-        fontType = Font.BOLD
-    }
-
-    private fun fadeOutAttributes(progress: Double) = TextAttributes().apply {
-        val editorBackground = scheme.defaultBackground
-        foregroundColor = ColorUtil.mix(Palette.textOn(Palette.REMOVED), editorBackground, progress)
-        backgroundColor = ColorUtil.mix(Palette.REMOVED, editorBackground, progress)
-        effectType = EffectType.STRIKEOUT
-        effectColor = foregroundColor
-    }
-
-    private fun fadeInAttributes(progress: Double) = TextAttributes().apply {
-        val editorBackground = scheme.defaultBackground
-        val finalBackground = if (highlight) options.highlightColor else editorBackground
-        val finalForeground = if (highlight) Palette.textOn(options.highlightColor) else scheme.defaultForeground
-        foregroundColor = ColorUtil.mix(editorBackground, finalForeground, progress)
-        backgroundColor = ColorUtil.mix(editorBackground, finalBackground, progress)
-        if (highlight) fontType = Font.BOLD
-    }
-
-    /** Marks changed lines in the gutter with a wide bar; deletions get a wedge. */
-    private class GutterMarker(private val color: Color, private val deletion: Boolean) : LineMarkerRendererEx {
-        override fun paint(editor: Editor, g: Graphics, r: Rectangle) {
-            g.color = color
-            val width = JBUI.scale(5)
-            if (deletion) {
-                val size = JBUI.scale(6)
-                g.fillPolygon(intArrayOf(r.x, r.x + size + width, r.x), intArrayOf(r.y - size, r.y, r.y + size), 3)
+    /**
+     * Between deleting the old text and inserting the new text, a gap holds the space of the old text and slides
+     * to the space of the new text, so the code after a change moves to its new place instead of jumping there.
+     * Changed lines get a gap between lines, a change inside one line gets a gap in that line.
+     */
+    private fun planGaps(): List<GapPlan> {
+        val editor = editor ?: return emptyList()
+        if (fadeDurationMs <= 0) return emptyList()
+        val plans = mutableListOf<GapPlan>()
+        var removedBefore = 0
+        for (change in changes) {
+            val offset = change.oldStart - removedBefore
+            removedBefore += change.removedLength
+            val start = editor.offsetToVisualPosition(change.oldStart)
+            val end = editor.offsetToVisualPosition(change.oldEnd)
+            val inserted = newText.substring(change.newStart, change.newEnd)
+            val insertedLines = inserted.count { it == '\n' }
+            if (start.line == end.line && insertedLines == 0) {
+                val from = editor.visualPositionToXY(end).x - editor.visualPositionToXY(start).x
+                val font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
+                val to = editor.contentComponent.getFontMetrics(font).stringWidth(inserted)
+                if (from != to) plans += GapPlan(offset, block = false, above = false, from, to)
             } else {
-                g.fillRect(r.x, r.y, width, r.height)
+                val from = (end.line - start.line) * editor.lineHeight
+                val to = insertedLines * editor.lineHeight
+                // The removed lines are above the rest of the line they end in, unless they start in the middle of a line.
+                val lineStart = oldText.lastIndexOf('\n', change.oldStart - 1) + 1
+                val above = oldText.subSequence(lineStart, change.oldStart).isBlank()
+                if (from != to) plans += GapPlan(offset, block = true, above, from, to)
             }
         }
-
-        override fun getPosition() = LineMarkerRendererEx.Position.LEFT
+        return plans
     }
 
-    /** A thick bar where text was removed: between lines for removed lines, otherwise a vertical bar in the line. */
-    private class DeletionMark(private val color: Color) : CustomHighlighterRenderer {
-        override fun paint(editor: Editor, highlighter: RangeHighlighter, g: Graphics) {
-            val document = editor.document
-            val offset = highlighter.startOffset
-            if (!highlighter.isValid || offset > document.textLength) return
-            val line = document.getLineNumber(offset)
-            val point = editor.offsetToXY(offset)
-            val thickness = JBUI.scale(3)
-            g.color = color
-            if (offset == document.getLineStartOffset(line)) {
-                val visible = editor.scrollingModel.visibleArea
-                g.fillRect(point.x, point.y - thickness / 2, visible.x + visible.width - point.x, thickness)
+    private fun openGaps() {
+        val editor = editor?.takeUnless { it.isDisposed } ?: return
+        for (plan in gapPlans) {
+            val renderer = GapRenderer(plan.block, plan.from)
+            val inlay = if (plan.block) {
+                editor.inlayModel.addBlockElement(plan.offset, !plan.above, plan.above, 0, renderer)
             } else {
-                g.fillRect(point.x - thickness / 2, point.y, thickness, editor.lineHeight)
+                editor.inlayModel.addInlineElement(plan.offset, false, renderer)
+            }
+            if (inlay != null) gaps += Gap(inlay, plan)
+        }
+    }
+
+    private fun resizeGaps(progress: Double) {
+        for (gap in gaps) {
+            if (!gap.inlay.isValid) continue
+            gap.inlay.renderer.size = (gap.plan.from + (gap.plan.to - gap.plan.from) * progress).roundToInt()
+            gap.inlay.update()
+        }
+    }
+
+    private fun closeGaps() {
+        gaps.forEach { Disposer.dispose(it.inlay) }
+        gaps.clear()
+    }
+
+    /**
+     * Paints the editor background over the highlighted text with [opacity], which fades the text and its
+     * background out or in while the text keeps its own colors.
+     */
+    private class Veil(private val opacity: Double) : CustomHighlighterRenderer {
+        override fun getOrder() = CustomHighlighterOrder.AFTER_TEXT
+
+        override fun paint(editor: Editor, highlighter: RangeHighlighter, g: Graphics) {
+            if (opacity <= 0.0 || !highlighter.isValid) return
+            val start = editor.offsetToVisualPosition(highlighter.startOffset)
+            val end = editor.offsetToVisualPosition(highlighter.endOffset)
+            val width = editor.contentComponent.width
+            val clip = g.clipBounds
+            val firstLine = if (clip == null) start.line else max(start.line, editor.yToVisualLine(clip.y))
+            val lastLine = if (clip == null) end.line else min(end.line, editor.yToVisualLine(clip.y + clip.height))
+            val background = (editor as? EditorEx)?.backgroundColor ?: editor.colorsScheme.defaultBackground
+            val caretRow = editor.colorsScheme.getColor(EditorColors.CARET_ROW_COLOR)
+                ?.takeIf { editor.settings.isCaretRowShown }
+            val caretLine = editor.caretModel.visualPosition.line
+            for (line in firstLine..lastLine) {
+                val left = if (line == start.line && start.column > 0) editor.visualPositionToXY(start).x else 0
+                val right = if (line == end.line) editor.visualPositionToXY(end).x else width
+                if (line == end.line && end.column == 0 || right <= left) continue
+                // A change inside the caret's line fades into that line's own background.
+                val insideLine = left > 0 || right < width
+                val color = if (line == caretLine && insideLine && caretRow != null) caretRow else background
+                g.color = Color(color.red, color.green, color.blue, (opacity.coerceAtMost(1.0) * 255).roundToInt())
+                g.fillRect(left, editor.visualLineToY(line), right - left, editor.lineHeight)
             }
         }
     }
@@ -397,25 +369,10 @@ class StepTransition(
     private companion object {
         const val FRAME_MS = 16
         const val HIGHLIGHT_LAYER = HighlighterLayer.SELECTION - 1
-    }
-}
 
-/** Saturated colors that survive washed-out projectors on light and dark editor themes. */
-private object Palette {
-    val REMOVED = Color(0xFF3B3B)
+        /** How much of the highlight color is mixed into the editor background behind changed text. */
+        const val TINT = 0.12
 
-    /** Black or white, whichever contrasts more with [background]. */
-    fun textOn(background: Color): Color = if (luminance(background) > 0.179) Color.BLACK else Color.WHITE
-
-    /** On light editors a pale marker color is hard to see in the gutter, so the bar gets darker. */
-    fun stripe(color: Color, editorBackground: Color): Color =
-        if (luminance(editorBackground) > 0.5) ColorUtil.mix(color, Color.BLACK, 0.35) else color
-
-    private fun luminance(color: Color): Double {
-        fun channel(value: Int): Double {
-            val c = value / 255.0
-            return if (c <= 0.03928) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
-        }
-        return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
+        fun easeInOut(t: Double): Double = if (t < 0.5) 4 * t * t * t else 1 - (2 - 2 * t).pow(3) / 2
     }
 }

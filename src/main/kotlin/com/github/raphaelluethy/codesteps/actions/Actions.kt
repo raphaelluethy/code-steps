@@ -48,8 +48,7 @@ private fun choosePresentation(project: Project, presentations: List<Presentatio
     when (presentations.size) {
         0 -> notify(
             project,
-            "No presentations found in ${PresentationStorage.ROOT_DIR}/. Open a file and use Tools | Code Steps | " +
-                "Start Recording or Capture Step to create one.",
+            "No presentations in ${PresentationStorage.ROOT_DIR}/ yet. Open a file and run Tools | Code Steps | Start Recording.",
             NotificationType.WARNING,
         )
         1 -> onChosen(presentations.single())
@@ -124,16 +123,6 @@ class PreviousHunkAction : SessionAction() {
     override fun perform(project: Project, session: PresentationSession) = session.previousHunk()
 }
 
-class FirstStepAction : SessionAction() {
-    override fun isEnabled(session: PresentationSession.Active) = !session.isAtStart
-    override fun perform(project: Project, session: PresentationSession) = session.first()
-}
-
-class LastStepAction : SessionAction() {
-    override fun isEnabled(session: PresentationSession.Active) = !session.isAtEnd
-    override fun perform(project: Project, session: PresentationSession) = session.last()
-}
-
 class PlayPauseAction : SessionAction() {
     override fun update(e: AnActionEvent) {
         super.update(e)
@@ -146,40 +135,6 @@ class PlayPauseAction : SessionAction() {
     }
 
     override fun perform(project: Project, session: PresentationSession) = session.togglePlay()
-}
-
-class FasterAction : SessionAction() {
-    override fun isEnabled(session: PresentationSession.Active) =
-        CodeStepsSettings.getInstance().state.speedPercent < CodeStepsSettings.SPEEDS.last()
-    override fun perform(project: Project, session: PresentationSession) = session.changeSpeed(+1)
-}
-
-class SlowerAction : SessionAction() {
-    override fun isEnabled(session: PresentationSession.Active) =
-        CodeStepsSettings.getInstance().state.speedPercent > CodeStepsSettings.SPEEDS.first()
-    override fun perform(project: Project, session: PresentationSession) = session.changeSpeed(-1)
-}
-
-/** Picks the playback speed from a list; used by the banner. */
-class ChooseSpeedAction : DumbAwareAction() {
-    override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-    override fun update(e: AnActionEvent) {
-        e.presentation.isEnabled = e.project != null
-        e.presentation.text = "Speed ${CodeStepsSettings.formatSpeed(CodeStepsSettings.getInstance().state.speedPercent)}"
-    }
-
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(CodeStepsSettings.SPEEDS)
-            .setTitle("Playback Speed")
-            .setRenderer(textListCellRenderer { CodeStepsSettings.formatSpeed(it) })
-            .setSelectedValue(CodeStepsSettings.getInstance().state.speedPercent, true)
-            .setItemChosenCallback { PresentationSession.getInstance(project).setSpeed(it) }
-            .createPopup()
-            .showInBestPositionFor(e.dataContext)
-    }
 }
 
 class StopPresentationAction : SessionAction() {
@@ -198,11 +153,6 @@ class UpdateStepAction : SessionAction() {
 /** Large editor font, hidden tool windows, and a large banner, for presenting on a projector. */
 class ToggleProjectorModeAction : DumbAwareToggleAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-    override fun update(e: AnActionEvent) {
-        super.update(e)
-        if (e.isFromActionToolbar) e.presentation.isVisible = e.session()?.isActive == true
-    }
 
     override fun isSelected(e: AnActionEvent) = CodeStepsSettings.getInstance().state.projectorMode
 
@@ -271,12 +221,8 @@ class StartRecordingAction : DumbAwareAction() {
             notify(project, "Only files inside the project directory can be recorded.", NotificationType.WARNING)
             return
         }
-        val title = Messages.showInputDialog(
-            project,
-            "Presentation title. Edit the file as usual; Capture Step and IDE commits add steps, Stop Recording adds the last one.",
-            "Start Recording", null, file.name, null,
-        )?.trim()?.ifEmpty { file.name } ?: return
-        RecordingSession.getInstance(project).start(root, file, title)
+        // No questions asked: the banner explains how to add steps, and the title can be changed in the manifest.
+        RecordingSession.getInstance(project).start(root, file, file.name)
     }
 }
 
@@ -356,16 +302,5 @@ class CaptureStepAction : DumbAwareAction() {
             )
         }
         if (existing.isEmpty()) save(null) else choosePresentation(project, existing, "Add Step To") { save(it) }
-    }
-}
-
-class ToggleHighlightAction : DumbAwareToggleAction() {
-    override fun getActionUpdateThread() = ActionUpdateThread.BGT
-
-    override fun isSelected(e: AnActionEvent) = CodeStepsSettings.getInstance().state.highlightChanges
-
-    override fun setSelected(e: AnActionEvent, state: Boolean) {
-        CodeStepsSettings.getInstance().state.highlightChanges = state
-        if (!state) e.session()?.clearHighlights()
     }
 }

@@ -52,12 +52,9 @@ class PresentationNotificationProvider : EditorNotificationProvider, DumbAware {
             EditorNotificationPanel(fileEditor, EditorNotificationPanel.Status.Info).apply {
                 icon(if (session.isPlaying) AllIcons.Actions.Execute else AllIcons.Actions.Play_forward)
                 text = (if (projector) "" else "${active.presentation.title} · ") + position + playing
-                createActionLabel("◀ Step", "CodeSteps.Previous")
-                createActionLabel("◀ Hunk", "CodeSteps.PreviousHunk")
+                createActionLabel("◀ Back", "CodeSteps.PreviousHunk")
+                createActionLabel("Next ▶", "CodeSteps.NextHunk")
                 createActionLabel(if (session.isPlaying) "Pause" else "Play", "CodeSteps.PlayPause")
-                createActionLabel("Hunk ▶", "CodeSteps.NextHunk")
-                createActionLabel("Step ▶", "CodeSteps.Next")
-                createActionLabel("Speed ${CodeStepsSettings.formatSpeed(settings.speedPercent)}", "CodeSteps.ChooseSpeed")
                 createActionLabel(if (projector) "Exit projector" else "Projector", "CodeSteps.ToggleProjectorMode")
                 createActionLabel("Stop", "CodeSteps.Stop")
                 if (projector) enlarge(this, settings.projectorFontSize)

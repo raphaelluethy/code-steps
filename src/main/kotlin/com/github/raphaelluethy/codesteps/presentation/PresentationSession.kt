@@ -3,7 +3,6 @@ package com.github.raphaelluethy.codesteps.presentation
 import com.github.raphaelluethy.codesteps.diff.StepDiff
 import com.github.raphaelluethy.codesteps.diff.TextChange
 import com.github.raphaelluethy.codesteps.settings.CodeStepsSettings
-import com.github.raphaelluethy.codesteps.settings.TransitionStyle
 import com.github.raphaelluethy.codesteps.storage.Presentation
 import com.github.raphaelluethy.codesteps.storage.PresentationException
 import com.github.raphaelluethy.codesteps.storage.PresentationStorage
@@ -32,7 +31,6 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.EditorNotifications
 import javax.swing.Timer
 import kotlin.math.max
-import kotlin.math.roundToInt
 
 /**
  * The running presentation of a project. Stepping replaces the text of the target file's regular
@@ -112,7 +110,7 @@ class PresentationSession(private val project: Project) : Disposable {
         session.index = startIndex.coerceIn(0, texts.lastIndex)
         active = session
         val editor = openEditor(session)
-        runTransition(session.stepTexts[session.index], TransitionStyle.INSTANT)
+        runTransition(session.stepTexts[session.index], animate = false, highlight = false)
         editor?.caretModel?.moveToOffset(0)
         editor?.scrollingModel?.scrollToCaret(ScrollType.MAKE_VISIBLE)
     }
@@ -134,7 +132,7 @@ class PresentationSession(private val project: Project) : Disposable {
     }
 
     /**
-     * Goes to the next step. Animated styles play the step's hunks one at a time; pressing again while
+     * Goes to the next step. Animated changes play the step's hunks one at a time; pressing again while
      * they play completes the step at once, like clicking through a slide animation.
      */
     fun nextStep() {
@@ -147,11 +145,10 @@ class PresentationSession(private val project: Project) : Disposable {
         }
         stopPlaying()
         if (session.isAtEnd) return
-        val style = settings.transition
-        if (style == TransitionStyle.HIGHLIGHT || style == TransitionStyle.INSTANT) {
-            moveTo(session.index + 1, 0, clearHighlights = session.hunk == 0)
-        } else {
+        if (settings.animate) {
             play(untilStep = session.index + 1)
+        } else {
+            moveTo(session.index + 1, 0, clearHighlights = session.hunk == 0)
         }
     }
 
@@ -159,17 +156,6 @@ class PresentationSession(private val project: Project) : Disposable {
         val session = active ?: return
         stopPlaying()
         if (session.hunk > 0) moveTo(session.index, 0) else if (session.index > 0) moveTo(session.index - 1, 0)
-    }
-
-    fun first() {
-        stopPlaying()
-        if (active?.isAtStart == false) moveTo(0, 0)
-    }
-
-    fun last() {
-        val session = active ?: return
-        stopPlaying()
-        if (!session.isAtEnd) moveTo(session.stepCount - 1, 0)
     }
 
     /** Starts or pauses playback. A pause lets the current hunk finish. */
@@ -183,18 +169,7 @@ class PresentationSession(private val project: Project) : Disposable {
         }
     }
 
-    fun setSpeed(percent: Int) {
-        settings.speedPercent = percent
-        refreshBanner()
-    }
-
-    fun changeSpeed(delta: Int) {
-        val speeds = CodeStepsSettings.SPEEDS
-        val current = speeds.indexOf(settings.speedPercent).takeIf { it >= 0 } ?: speeds.indexOf(100)
-        setSpeed(speeds[(current + delta).coerceIn(0, speeds.lastIndex)])
-    }
-
-    /** Ends the presentation and, depending on the settings, restores the content from before it started. */
+    /** Ends the presentation and restores the content the file had before it started. */
     fun stop() {
         val session = active ?: return
         stopPlaying()
@@ -202,7 +177,7 @@ class PresentationSession(private val project: Project) : Disposable {
         clearHighlights()
         releaseProjectorMode()
         active = null
-        if (settings.restoreOnStop && session.document.text != session.originalText) {
+        if (session.document.text != session.originalText) {
             WriteCommandAction.writeCommandAction(project)
                 .withName("Code Steps: Stop Presentation")
                 .run<RuntimeException> { session.document.setText(session.originalText) }
@@ -243,7 +218,7 @@ class PresentationSession(private val project: Project) : Disposable {
         refreshBanner()
     }
 
-    fun clearHighlights() {
+    private fun clearHighlights() {
         highlights.forEach { it.dispose() }
         highlights.clear()
     }
@@ -281,7 +256,7 @@ class PresentationSession(private val project: Project) : Disposable {
         }
         val target = session.text(session.index, session.hunk)
         // A new step starts with a clean slate; hunks of the same step stay marked.
-        runTransition(target, settings.transition, clearHighlights = startsStep) { onHunkShown() }
+        runTransition(target, clearHighlights = startsStep) { onHunkShown() }
     }
 
     private fun onHunkShown() {
@@ -294,7 +269,7 @@ class PresentationSession(private val project: Project) : Disposable {
             return
         }
         // Give the audience a longer look at a finished step before the next one starts.
-        val pause = scaled(settings.hunkPauseMs) * (if (session.hunk == 0) 2 else 1)
+        val pause = settings.hunkPauseMs * (if (session.hunk == 0) 2 else 1)
         pauseTimer = Timer(pause) {
             ApplicationManager.getApplication().invokeLater({
                 if (isPlaying && active === session) advanceHunk()
@@ -309,10 +284,9 @@ class PresentationSession(private val project: Project) : Disposable {
     private fun fastForwardTo(step: Int) {
         val session = active ?: return
         disposeTransition()
-        val style = if (settings.highlightChanges) TransitionStyle.HIGHLIGHT else TransitionStyle.INSTANT
         session.index = step.coerceAtMost(session.stepCount - 1)
         session.hunk = 0
-        runTransition(session.stepTexts[session.index], style, clearHighlights = false)
+        runTransition(session.stepTexts[session.index], animate = false, clearHighlights = false)
     }
 
     private fun moveTo(index: Int, hunk: Int, clearHighlights: Boolean = true) {
@@ -320,14 +294,15 @@ class PresentationSession(private val project: Project) : Disposable {
         if (index !in 0 until session.stepCount) return
         session.index = index
         session.hunk = hunk
-        runTransition(session.text(index, hunk), settings.transition, clearHighlights)
+        runTransition(session.text(index, hunk), clearHighlights = clearHighlights)
     }
 
     // Transitions
 
     private fun runTransition(
         target: String,
-        style: TransitionStyle,
+        animate: Boolean = settings.animate,
+        highlight: Boolean = settings.highlightChanges,
         clearHighlights: Boolean = true,
         onFinished: () -> Unit = {},
     ) {
@@ -336,16 +311,11 @@ class PresentationSession(private val project: Project) : Disposable {
         if (clearHighlights) clearHighlights()
         val editor = openEditor(session)
         if (settings.projectorMode) applyProjectorMode()
-        val options = StepTransition.Options(
-            style = style,
-            highlightChanges = settings.highlightChanges,
-            fadeDurationMs = scaled(settings.fadeDurationMs),
-            typingCharsPerSecond = max(1, (settings.typingCharsPerSecond * speed).roundToInt()),
-            maxTypingDurationMs = scaled(settings.maxTypingDurationMs),
-            highlightColor = CodeStepsSettings.parseColor(settings.highlightColor),
-        )
         val newTransition = StepTransition(
-            project, session.document, target, options, highlights,
+            project, session.document, target,
+            fadeDurationMs = if (animate) settings.fadeDurationMs else 0,
+            highlightColor = if (highlight) CodeStepsSettings.parseColor(settings.highlightColor) else null,
+            highlights, editor,
             onProgress = { offset ->
                 if (editor != null && !editor.isDisposed && offset <= editor.document.textLength) {
                     editor.caretModel.moveToOffset(offset)
@@ -373,10 +343,6 @@ class PresentationSession(private val project: Project) : Disposable {
         editor.caretModel.moveToOffset(offset.coerceIn(0, document.textLength))
         editor.scrollingModel.scrollTo(LogicalPosition(middle.coerceAtLeast(0), 0), ScrollType.CENTER)
     }
-
-    private val speed: Double get() = settings.speedPercent.coerceAtLeast(10) / 100.0
-
-    private fun scaled(ms: Int): Int = (ms / speed).roundToInt()
 
     private fun openEditor(session: Active): Editor? {
         OpenFileDescriptor(project, session.target).navigate(true)
@@ -417,8 +383,7 @@ class PresentationSession(private val project: Project) : Disposable {
     /** Enlarges the presented editor and hides tool windows; remembers everything it changes. */
     private fun applyProjectorMode() {
         val session = active ?: return
-        val state = projector ?: ProjectorState(if (settings.projectorHideToolWindows) hideToolWindows() else emptyList())
-            .also { projector = it }
+        val state = projector ?: ProjectorState(hideToolWindows()).also { projector = it }
         for (editor in EditorFactory.getInstance().getEditors(session.document, project)) {
             if (editor !is EditorEx || editor.isDisposed || editor in state.editors) continue
             state.editors[editor] = SavedEditor(

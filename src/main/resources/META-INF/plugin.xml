@@ -5,12 +5,12 @@
 
     <description><![CDATA[
     Present code step by step, like slides, or play a recorded refactoring back chunk by chunk as if it were
-    typed live. Steps are versions of a file; each change between two steps plays as diff hunks, one at a time.
+    edited live. Steps are versions of a file; each change between two steps plays as diff hunks, one at a time.
     <ul>
       <li>Works with every file type: stepping, diffing, highlighting, and animation use only the document text.</li>
       <li>The presented file stays a normal editor, so highlighting, navigation, completion, and inspections keep working.</li>
-      <li>Hunk, highlight (marker pen), fade, and typewriter transitions, auto-play with pause and speed control,
-          and a projector mode with a large font for classrooms.</li>
+      <li>Each change looks like an edit made by hand, without the typing: old code is selected and fades out,
+          the code below slides, new code fades in. Auto-play, and a projector mode with a large font for classrooms.</li>
       <li>Record a refactoring: start recording, edit as usual, capture or commit, stop. The result is a presentation.</li>
       <li>Presentations are plain files in <code>.codesteps/</code>: a readable <code>presentation.yaml</code> plus one
           snapshot file per step. Commit them, review them in pull requests, and share them by cloning the repository.</li>
@@ -47,7 +47,7 @@
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift COMMA" replace-all="true"/>
         </action>
         <action id="CodeSteps.Next" class="com.github.raphaelluethy.codesteps.actions.NextStepAction"
-                text="Next Step" description="Play the next step hunk by hunk; press again to complete it at once"
+                text="Next Step" description="Play the rest of the step hunk by hunk; press again to complete it at once"
                 icon="AllIcons.Actions.Play_forward">
             <keyboard-shortcut keymap="$default" first-keystroke="control alt shift PERIOD"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift PERIOD" replace-all="true"/>
@@ -67,26 +67,6 @@
                 text="Play" description="Play the hunks one at a time" icon="AllIcons.Actions.Execute">
             <keyboard-shortcut keymap="$default" first-keystroke="control alt shift SPACE"/>
         </action>
-        <action id="CodeSteps.Faster" class="com.github.raphaelluethy.codesteps.actions.FasterAction"
-                text="Play Faster" description="Increase the playback speed">
-            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift EQUALS"/>
-        </action>
-        <action id="CodeSteps.Slower" class="com.github.raphaelluethy.codesteps.actions.SlowerAction"
-                text="Play Slower" description="Decrease the playback speed">
-            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift MINUS"/>
-        </action>
-        <action id="CodeSteps.ChooseSpeed" class="com.github.raphaelluethy.codesteps.actions.ChooseSpeedAction"
-                text="Playback Speed…" description="Choose the playback speed"/>
-        <action id="CodeSteps.First" class="com.github.raphaelluethy.codesteps.actions.FirstStepAction"
-                text="First Step" description="Show the first step of the presentation"
-                icon="AllIcons.Actions.Play_first">
-            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift HOME"/>
-        </action>
-        <action id="CodeSteps.Last" class="com.github.raphaelluethy.codesteps.actions.LastStepAction"
-                text="Last Step" description="Show the last step of the presentation"
-                icon="AllIcons.Actions.Play_last">
-            <keyboard-shortcut keymap="$default" first-keystroke="control alt shift END"/>
-        </action>
         <action id="CodeSteps.ToggleProjectorMode" class="com.github.raphaelluethy.codesteps.actions.ToggleProjectorModeAction"
                 text="Projector Mode" description="Large font, hidden tool windows, and a large banner for presenting"
                 icon="AllIcons.Actions.PresentationAssistantSettings"/>
@@ -105,9 +85,6 @@
         <action id="CodeSteps.UpdateStep" class="com.github.raphaelluethy.codesteps.actions.UpdateStepAction"
                 text="Save Editor to Current Step" description="Overwrite the current step with the editor content"
                 icon="AllIcons.Actions.MenuSaveall"/>
-        <action id="CodeSteps.ToggleHighlight" class="com.github.raphaelluethy.codesteps.actions.ToggleHighlightAction"
-                text="Highlight Changes" description="Highlight what changed after each hunk"
-                icon="AllIcons.Actions.Highlighting"/>
 
         <group id="CodeSteps.Menu" text="Code Steps" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
@@ -119,13 +96,7 @@
             <reference ref="CodeSteps.PreviousHunk"/>
             <reference ref="CodeSteps.Next"/>
             <reference ref="CodeSteps.Previous"/>
-            <reference ref="CodeSteps.First"/>
-            <reference ref="CodeSteps.Last"/>
-            <reference ref="CodeSteps.Faster"/>
-            <reference ref="CodeSteps.Slower"/>
-            <reference ref="CodeSteps.ChooseSpeed"/>
             <reference ref="CodeSteps.ToggleProjectorMode"/>
-            <reference ref="CodeSteps.ToggleHighlight"/>
             <separator/>
             <reference ref="CodeSteps.StartRecording"/>
             <reference ref="CodeSteps.StopRecording"/>
@@ -136,16 +107,9 @@
         <group id="CodeSteps.Toolbar">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="first"/>
+            <!-- At most one of these shows at a time; the banner above the editor has the presenting controls. -->
             <reference ref="CodeSteps.Start"/>
             <reference ref="CodeSteps.StopRecording"/>
-            <reference ref="CodeSteps.First"/>
-            <reference ref="CodeSteps.Previous"/>
-            <reference ref="CodeSteps.PreviousHunk"/>
-            <reference ref="CodeSteps.PlayPause"/>
-            <reference ref="CodeSteps.NextHunk"/>
-            <reference ref="CodeSteps.Next"/>
-            <reference ref="CodeSteps.Last"/>
-            <reference ref="CodeSteps.ToggleProjectorMode"/>
             <reference ref="CodeSteps.Stop"/>
         </group>
 
