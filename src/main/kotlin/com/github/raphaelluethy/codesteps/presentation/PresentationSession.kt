@@ -316,6 +316,7 @@ class PresentationSession(private val project: Project) : Disposable {
             fadeDurationMs = if (animate) settings.fadeDurationMs else 0,
             highlightColor = if (highlight) CodeStepsSettings.parseColor(settings.highlightColor) else null,
             highlights, editor,
+            diffColors = settings.useDiffColors,
             onProgress = { offset ->
                 if (editor != null && !editor.isDisposed && offset <= editor.document.textLength) {
                     editor.caretModel.moveToOffset(offset)

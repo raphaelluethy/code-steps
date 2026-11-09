@@ -4,7 +4,10 @@ import com.github.raphaelluethy.codesteps.settings.CodeStepsSettings
 import com.github.raphaelluethy.codesteps.storage.ManifestFormat
 import com.github.raphaelluethy.codesteps.storage.PresentationStorage
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.diff.DiffColors
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.Disposer
@@ -141,6 +144,26 @@ class PresentationSessionTest : BasePlatformTestCase() {
         session.nextStep()
         assertEquals(step2, targetText)
         assertEmpty(marked(session.active!!.document, Color(0x00FFFF)))
+    }
+
+    fun `test diff colors mark modified and inserted hunks instead of the tint`() {
+        settings.animate = false
+        settings.useDiffColors = true
+        session.start(createPresentation())
+        val document = session.active!!.document
+        val scheme = EditorColorsManager.getInstance().globalScheme
+        fun colored(key: TextAttributesKey): List<String> {
+            val color = scheme.getAttributes(key).backgroundColor
+            return DocumentMarkupModel.forDocument(document, project, true).allHighlighters
+                .filter { it.getTextAttributes(scheme)?.backgroundColor == color }
+                .sortedBy { it.startOffset }
+                .map { document.text.substring(it.startOffset, it.endOffset) }
+        }
+
+        session.nextStep()
+        assertEquals(listOf("- oat milk"), colored(DiffColors.DIFF_MODIFIED))
+        assertEquals(listOf("- apples"), colored(DiffColors.DIFF_INSERTED))
+        assertEmpty(marked(document, CodeStepsSettings.parseColor(settings.highlightColor)))
     }
 
     fun `test play stops after one step unless it may continue into the next steps`() {

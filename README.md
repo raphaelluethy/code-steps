@@ -64,6 +64,8 @@ project:
 
 - **Animate changes** and how long a fade takes (900 ms). Off, each change appears at once.
 - **Tint changed lines** and the tint color (yellow).
+- **Use the diff colors of the editor color scheme** instead of the tint: old code fades out in the deleted or
+  modified color, and new code keeps the inserted or modified color, as in the diff viewer.
 - How long Play pauses between hunks (800 ms, doubled after a finished step).
 - Whether Play continues into the next step.
 - The projector mode font size.

@@ -19,6 +19,8 @@ class CodeStepsSettings : SimplePersistentStateComponent<CodeStepsSettings.State
         var highlightChanges by property(true)
         /** Tint color as `RRGGBB`. */
         var highlightColor by string(DEFAULT_HIGHLIGHT_COLOR)
+        /** Mark changes in the diff colors of the editor color scheme instead of [highlightColor]. */
+        var useDiffColors by property(false)
         var hunkPauseMs by property(800)
         var playAcrossSteps by property(false)
         var projectorMode by property(false)
