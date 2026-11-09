@@ -179,6 +179,12 @@ class PresentationSessionTest : BasePlatformTestCase() {
         Disposer.dispose(transition)
     }
 
+    fun `test manifest and step files are recognized without reading the manifest`() {
+        val presentation = createPresentation()
+        assertTrue(PresentationStorage.isPresentationFile(presentation.dir.findChild("01.txt")!!))
+        assertFalse(PresentationStorage.isPresentationFile(myFixture.findFileInTempDir("notes/list.txt")))
+    }
+
     fun `test play stops after one step unless it may continue into the next steps`() {
         settings.animate = false
         settings.hunkPauseMs = 5

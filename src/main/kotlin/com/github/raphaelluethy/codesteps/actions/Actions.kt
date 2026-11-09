@@ -176,12 +176,6 @@ class StartPresentationAction : DumbAwareAction() {
     override fun update(e: AnActionEvent) {
         val project = e.project
         e.presentation.isEnabled = project != null && e.recording()?.isRecording != true
-        if (e.isFromActionToolbar) {
-            // Keep the main toolbar clean in projects without presentations.
-            e.presentation.isVisible = project != null &&
-                e.session()?.isActive != true && e.recording()?.isRecording != true &&
-                PresentationStorage.projectRoot(project)?.findChild(PresentationStorage.ROOT_DIR) != null
-        }
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -209,8 +203,8 @@ class StartRecordingAction : DumbAwareAction() {
     override fun update(e: AnActionEvent) {
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
         e.presentation.isEnabled = e.project != null && e.getData(CommonDataKeys.EDITOR) != null && file != null &&
-            PresentationStorage.containing(file) == null && e.recording()?.isRecording != true &&
-            e.session()?.isActive != true
+            e.recording()?.isRecording != true && e.session()?.isActive != true &&
+            !PresentationStorage.isPresentationFile(file)
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -257,7 +251,7 @@ class CaptureStepAction : DumbAwareAction() {
     override fun update(e: AnActionEvent) {
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
         e.presentation.isEnabled = e.project != null && e.getData(CommonDataKeys.EDITOR) != null &&
-            file != null && PresentationStorage.containing(file) == null
+            file != null && !PresentationStorage.isPresentationFile(file)
     }
 
     override fun actionPerformed(e: AnActionEvent) {

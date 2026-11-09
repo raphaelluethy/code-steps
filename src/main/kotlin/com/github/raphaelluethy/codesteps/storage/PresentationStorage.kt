@@ -38,6 +38,12 @@ object PresentationStorage {
 
     fun projectRoot(project: Project): VirtualFile? = project.guessProjectDir()
 
+    /** Whether [file] is the manifest or a step file of a presentation. Does not read the manifest. */
+    fun isPresentationFile(file: VirtualFile): Boolean {
+        val dir = file.parent ?: return false
+        return dir.parent?.name == ROOT_DIR && dir.findChild(ManifestFormat.FILE_NAME) != null
+    }
+
     fun list(root: VirtualFile): List<Presentation> {
         val codesteps = root.findChild(ROOT_DIR) ?: return emptyList()
         return codesteps.children
@@ -60,10 +66,9 @@ object PresentationStorage {
 
     /** The presentation that owns [file], if [file] is a manifest or step file. */
     fun containing(file: VirtualFile): Presentation? {
-        val dir = file.parent ?: return null
-        if (dir.parent?.name != ROOT_DIR || dir.findChild(ManifestFormat.FILE_NAME) == null) return null
+        if (!isPresentationFile(file)) return null
         return try {
-            load(dir)
+            load(file.parent)
         } catch (_: PresentationException) {
             null
         }

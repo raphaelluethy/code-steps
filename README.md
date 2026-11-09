@@ -30,8 +30,7 @@ use. You can also write the files yourself (see [File format](#file-format)).
 
 ## Presenting
 
-**Start Presentation** is in the main toolbar once the project has a `.codesteps/` folder, and under
-**Tools | Code Steps**. The file shows step 1, and a banner above the editor shows the position (step, and hunk
+**Start Presentation** is under **Tools | Code Steps**. The file shows step 1, and a banner above the editor shows the position (step, and hunk
 within the change to the next step) with **◀ Back**, **Next ▶**, **Play**, **Projector**, and **Stop**.
 
 | Action | Windows / Linux | What it does |

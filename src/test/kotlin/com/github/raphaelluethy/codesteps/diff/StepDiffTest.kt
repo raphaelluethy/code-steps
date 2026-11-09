@@ -35,6 +35,14 @@ class StepDiffTest : BasePlatformTestCase() {
         assertEquals(listOf("" to ", tax"), edits("a\nval sum = total(items)\nb\n", "a\nval sum = total(items, tax)\nb\n"))
         assertEquals(listOf("total" to "sum"), edits("  return total\n", "  return sum\n"))
         assertEquals(listOf("" to "new line\n"), edits("a\nb\n", "a\nnew line\nb\n"))
+        // A new line above a changed line: the line comes, and in the line below only the argument changes.
+        assertEquals(
+            listOf("" to "    int LOWER_BOUND = 1;\n", "1" to "LOWER_BOUND"),
+            edits(
+                "    int UPPER_BOUND = 101;\n    return new Random().nextInt(1, UPPER_BOUND);\n}\n",
+                "    int UPPER_BOUND = 101;\n    int LOWER_BOUND = 1;\n    return new Random().nextInt(LOWER_BOUND, UPPER_BOUND);\n}\n",
+            ),
+        )
         assertEquals(
             listOf("  var sum = 0\n  for (item in items) sum += item.price\n  return sum\n" to "  return items.sumOf { item -> item.price }\n"),
             edits(

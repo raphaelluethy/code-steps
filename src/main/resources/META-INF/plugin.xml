@@ -104,15 +104,6 @@
             <reference ref="CodeSteps.UpdateStep"/>
         </group>
 
-        <group id="CodeSteps.Toolbar">
-            <add-to-group group-id="MainToolbarRight" anchor="first"/>
-            <add-to-group group-id="NavBarToolBar" anchor="first"/>
-            <!-- At most one of these shows at a time; the banner above the editor has the presenting controls. -->
-            <reference ref="CodeSteps.Start"/>
-            <reference ref="CodeSteps.StopRecording"/>
-            <reference ref="CodeSteps.Stop"/>
-        </group>
-
         <group id="CodeSteps.EditorPopup">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <reference ref="CodeSteps.StartRecording"/>
