@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+jdk_home="$HOME/.local/share/code-steps/jdk-25"
+started=$SECONDS
+
+if [[ ! -x "$jdk_home/bin/java" ]]; then
+  echo "Installing Temurin JDK 25"
+  case "$(uname -m)" in
+    x86_64) arch=x64 ;;
+    aarch64) arch=aarch64 ;;
+    *) echo "Unsupported JDK architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+  mkdir -p "$(dirname -- "$jdk_home")"
+  download_dir="$(mktemp -d "$(dirname -- "$jdk_home")/jdk-download.XXXXXX")"
+  trap 'rm -rf -- "$download_dir"' EXIT
+  metadata="$(curl --fail --silent --show-error --location --retry 3 \
+    "https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture=$arch&image_type=jdk&os=linux&vendor=eclipse")"
+  url="$(jq -er '.[0].binary.package.link' <<< "$metadata")"
+  checksum="$(jq -er '.[0].binary.package.checksum' <<< "$metadata")"
+  curl --fail --silent --show-error --location --retry 3 "$url" -o "$download_dir/jdk.tar.gz"
+  printf '%s  %s\n' "$checksum" "$download_dir/jdk.tar.gz" | sha256sum --check
+  mkdir "$download_dir/jdk"
+  tar -xzf "$download_dir/jdk.tar.gz" -C "$download_dir/jdk" --strip-components=1
+  mv -- "$download_dir/jdk" "$jdk_home"
+fi
+
+export JAVA_HOME="$jdk_home"
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version
+echo "JDK ready after $((SECONDS - started))s"
+
+profile_marker="# code-steps JDK 25"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  printf '\n%s\nif [[ "$PWD" == %q || "$PWD" == %q/* ]]; then\n  export JAVA_HOME=%q\n  export PATH="$JAVA_HOME/bin:$PATH"\nfi\n' \
+    "$profile_marker" "$repo_root" "$repo_root" "$jdk_home" >> "$HOME/.bash_profile"
+fi
+
+echo "Preparing Gradle build and test dependencies"
+"$repo_root/gradlew" -p "$repo_root" --no-daemon testClasses prepareTestSandbox prepareSandbox
+echo "Orb setup finished in $((SECONDS - started))s"
