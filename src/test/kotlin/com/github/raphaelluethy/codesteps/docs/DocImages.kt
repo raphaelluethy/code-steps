@@ -112,6 +112,10 @@ class DocImages : BasePlatformTestCase() {
         try {
             ImageIO.write(renderSettings(), "png", File(out, "settings.png"))
             startPresentation()
+            val editorImage = renderEditor()
+            val fileEditor = FileEditorManager.getInstance(project).getSelectedEditor(session.active!!.target)!!
+            val banner = PresentationNotificationProvider().collectNotificationData(project, session.active!!.target)!!.apply(fileEditor)!!
+            ImageIO.write(editorImage.getSubimage(0, 0, editorImage.width, banner.preferredSize.height * SCALE), "png", File(out, "banner.png"))
             recordDemo(frames)
             session.stop()
 
@@ -121,13 +125,22 @@ class DocImages : BasePlatformTestCase() {
             session.nextStep()
             session.nextStep()
             ImageIO.write(renderEditor(), "png", File(out, "diff-colors.png"))
+            session.stop()
+
+            settings.useDiffColors = false
+            startPresentation()
+            session.setProjectorMode(true)
+            ImageIO.write(renderEditor(), "png", File(out, "projector.png"))
+            session.setProjectorMode(false)
         } finally {
             colors.setGlobalScheme(previousScheme)
         }
     }
 
     private fun startPresentation() {
-        myFixture.addFileToProject("src/Guess.java", steps.last().second)
+        if (myFixture.tempDirFixture.getFile("src/Guess.java") == null) {
+            myFixture.addFileToProject("src/Guess.java", steps.last().second)
+        }
         val manifest = "codesteps: 1\ntitle: \"Guessing game\"\ntarget: \"src/Guess.java\"\nsteps:\n" +
             steps.indices.joinToString("") { "  - file: \"%02d.java\"\n    title: \"${steps[it].first}\"\n".format(it + 1) }
         if (myFixture.tempDirFixture.getFile(".codesteps/guess/presentation.yaml") == null) {
@@ -175,22 +188,23 @@ class DocImages : BasePlatformTestCase() {
         val active = session.active!!
         val fileEditor = FileEditorManager.getInstance(project).getSelectedEditor(active.target)!!
         val editor = FileEditorManager.getInstance(project).selectedTextEditor as EditorEx
-        editor.setFontSize(FONT_SIZE)
+        if (!settings.projectorMode) editor.setFontSize(FONT_SIZE)
+        val width = if (settings.projectorMode) 1400 else WIDTH
         val banner = PresentationNotificationProvider().collectNotificationData(project, active.target)?.apply(fileEditor)
         val bannerHeight = banner?.preferredSize?.height ?: 0
         val content = editor.contentComponent
         val lines = steps.maxOf { it.second.count { c -> c == '\n' } } + 1
         val height = bannerHeight + PADDING + lines * editor.lineHeight + PADDING
-        return image(WIDTH, height) { g ->
+        return image(width, height) { g ->
             g.color = editor.backgroundColor
-            g.fillRect(0, 0, WIDTH, height)
+            g.fillRect(0, 0, width, height)
             if (banner != null) {
-                banner.setSize(WIDTH, bannerHeight)
+                banner.setSize(width, bannerHeight)
                 layout(banner)
                 banner.paint(g)
             }
             g.translate(PADDING, bannerHeight + PADDING)
-            content.setSize(WIDTH - PADDING, height - bannerHeight - PADDING)
+            content.setSize(width - PADDING, height - bannerHeight - PADDING)
             g.setClip(0, 0, content.width, content.height)
             content.paint(g)
         }

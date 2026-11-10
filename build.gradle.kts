@@ -38,6 +38,18 @@ intellijPlatform {
     pluginConfiguration {
         name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
+        changeNotes = providers.fileContents(layout.projectDirectory.file("CHANGELOG.md")).asText
+            .zip(providers.gradleProperty("pluginVersion")) { changelog, version ->
+                val heading = "## [$version] - "
+                require(heading in changelog) { "CHANGELOG.md has no section for $version" }
+                changelog.substringAfter(heading).substringAfter('\n').substringBefore("\n## ").trim()
+                    .split(Regex("\n\\s*\n")).joinToString("\n") { block ->
+                        val escaped = block.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            .replace(Regex("\\*\\*(.*?)\\*\\*"), "<strong>$1</strong>")
+                        if (escaped.startsWith("### ")) "<h3>${escaped.removePrefix("### ")}</h3>"
+                        else "<ul><li>${escaped.removePrefix("- ").replace("\n- ", "</li><li>").replace('\n', ' ')}</li></ul>"
+                    }
+            }
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild")
             untilBuild = provider { null }

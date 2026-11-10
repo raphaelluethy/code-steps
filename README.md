@@ -1,9 +1,31 @@
 # Code Steps
 
+[![Build](https://github.com/raphaelluethy/code-steps/actions/workflows/build.yml/badge.svg)](https://github.com/raphaelluethy/code-steps/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/raphaelluethy/code-steps)](https://github.com/raphaelluethy/code-steps/releases/latest)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+
 An IntelliJ Platform plugin for presenting code step by step, like slides, or for playing a recorded refactoring
 back chunk by chunk, as if someone were editing live in front of the class. You save several versions of a file
 as steps. Each change between two steps is split into diff hunks (blocks of contiguous changed lines), and the
 hunks play one at a time, top to bottom, in the normal editor.
+
+![A guessing game changes one hunk at a time in the real editor](docs/images/demo.gif)
+
+## Teaching with Code Steps
+
+Prepare a lesson by recording a working example as you develop it. Capture a step at each point you want to
+discuss, such as naming a constant, adding a loop, or extracting a method. Give the steps useful titles in
+`presentation.yaml`, then commit `.codesteps/` alongside the example so students and colleagues can replay it.
+
+In class, open the example and start its presentation. Advance one hunk, explain the change, and ask students
+to predict the next one. Go back to revisit an idea, or use Play to walk through a longer change. Turn on
+Projector for larger text and fewer distractions.
+
+Unlike slides, the lesson stays in a real source file with the IDE's syntax highlighting and navigation.
+Unlike live typing, the prepared changes need no typing or typo recovery during the explanation. You can
+still edit the example to answer a question, and Stop restores the file's original content.
+
+## Features
 
 - **Any file type.** Stepping, diffing, highlighting, and animation work on the document text only, so Kotlin,
   Markdown, YAML, and plain text all behave the same. No language plugin or PSI is needed.
@@ -11,13 +33,26 @@ hunks play one at a time, top to bottom, in the normal editor.
   navigation, completion, and inspections keep working while you present.
 - **Plain files in Git.** Presentations live in `.codesteps/` inside the project. Commit them, review them in
   pull requests, and share them by cloning the repository.
+- **Hunk-by-hunk playback.** Animated word and line changes, Back, Next, and Play let you control the pace.
+- **Classroom display.** Projector mode enlarges the editor and banner. Choose a custom tint or the editor
+  color scheme's diff colors to mark changes.
+- **Record while editing.** Capture steps explicitly or through commits made in the IDE.
+
+## Installation
+
+1. Download `code-steps-0.2.3.zip` from the [GitHub release](https://github.com/raphaelluethy/code-steps/releases/tag/v0.2.3).
+   Use the plugin ZIP under **Assets**, not GitHub's source-code archives. Do not unzip it.
+2. In a [compatible IDE](#compatibility), open **Settings | Plugins | ⚙ | Install Plugin from Disk**.
+3. Select the ZIP and restart the IDE if prompted.
+
+The GitHub release ZIP is the installation route documented here; you do not need to build from source.
 
 ## Quick start
 
-There is nothing to configure.
+After installation, there is nothing to configure.
 
-1. Install the plugin ZIP with **Settings | Plugins | ⚙ | Install Plugin from Disk** (see [Building](#building)).
-2. Open a file, right-click in the editor, and choose **Start Recording**. The file as it is now becomes step 1,
+1. Open a project and a source file you want to teach from. Save any work before presenting.
+2. Right-click in the editor and choose **Start Recording**. The file as it is now becomes step 1,
    and a red banner shows that recording is on.
 3. Edit as usual. Whenever you reach a point the audience should see, choose **Capture Step**, or commit in the
    IDE: each commit that includes the file adds a step named after the commit message.
@@ -32,6 +67,8 @@ use. You can also write the files yourself (see [File format](#file-format)).
 
 **Start Presentation** is under **Tools | Code Steps**. The file shows step 1, and a banner above the editor shows the position (step, and hunk
 within the change to the next step) with **◀ Back**, **Next ▶**, **Play**, **Projector**, and **Stop**.
+
+![The presentation banner with position, Back, Next, Play, Projector, and Stop](docs/images/banner.png)
 
 | Action | Windows / Linux | What it does |
 | --- | --- | --- |
@@ -57,6 +94,23 @@ overwrites the current step, and **Capture Step** inserts the editor content as 
 the intention bulbs, and enlarges the banner so it reads from the back of the room. Turning it off or stopping the
 presentation restores everything.
 
+![Projector mode enlarges the real editor and its banner](docs/images/projector.png)
+
+## Recording
+
+Recording saves snapshots of one file, not a video or a keystroke history.
+
+1. Open the file and choose **Start Recording** from its editor context menu or **Tools | Code Steps**.
+   The current content becomes the first step.
+2. Edit the file. Choose **Capture Step** at each teaching point. While recording, a commit made in the IDE
+   that includes the file also captures a step, titled with the first nonblank line of the commit message.
+   Commits made in a terminal do not trigger this integration.
+3. Choose **Stop recording** in the red banner. This captures any final changes and offers to start presenting.
+
+Unchanged content does not add another recorded step. A recording belongs to one file, so repeat the process
+for another file if the lesson needs it. To revise a lesson, edit the snapshot files and manifest directly,
+or present it and use **Save Editor to Current Step** or **Capture Step**.
+
 ## Settings
 
 **Settings | Tools | Code Steps** holds the personal preferences, stored in the IDE configuration and not in the
@@ -69,6 +123,13 @@ project:
 - How long Play pauses between hunks (800 ms, doubled after a finished step).
 - Whether Play continues into the next step.
 - The projector mode font size.
+
+![The Code Steps settings panel with the default preferences](docs/images/settings.png)
+
+With diff colors enabled, inserted code uses the editor color scheme's inserted color instead of yellow.
+During animation, removed code uses its deleted color before disappearing.
+
+![Inserted code marked with the editor color scheme's diff colors](docs/images/diff-colors.png)
 
 ## File format
 
@@ -105,6 +166,17 @@ long as the manifest matches. The manifest is a small YAML subset: one `key: val
 The plugin excludes `.codesteps/` from indexing, so step files do not show up as duplicate classes in navigation or
 search. They are still regular files in version control.
 
+## Compatibility
+
+Version 0.2.3 targets IntelliJ IDEA 2026.3 and requires IntelliJ Platform build **263 or newer**.
+The plugin declares no upper build limit, but that does not guarantee compatibility with future IDE releases.
+The [Build workflow](https://github.com/raphaelluethy/code-steps/actions/workflows/build.yml) runs JetBrains
+Plugin Verifier against the recommended IDE versions.
+
+The plugin depends on the IntelliJ Platform, not a particular language plugin. Other IntelliJ-based IDEs
+must meet the same platform requirement; check the verifier results for tested versions. IDE commit capture
+uses the optional VCS integration. Manual capture and playback do not require it.
+
 ## Building
 
 Requires JDK 25 (IntelliJ IDEA 2026.3 runs on Java 25).
@@ -117,3 +189,10 @@ Requires JDK 25 (IntelliJ IDEA 2026.3 runs on Java 25).
 ```
 
 Install the ZIP with **Settings | Plugins | ⚙ | Install Plugin from Disk**.
+
+See [image regeneration](docs/images/README.md) for the headless README capture commands.
+
+## License
+
+Code Steps is licensed under the [GNU General Public License v3.0](LICENSE). See [CHANGELOG.md](CHANGELOG.md)
+for release history.

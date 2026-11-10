@@ -1,9 +1,11 @@
 <idea-plugin>
     <id>com.github.raphaelluethy.codesteps</id>
     <name>Code Steps</name>
-    <vendor>raphaelluethy</vendor>
+    <vendor url="https://github.com/raphaelluethy/code-steps">raphaelluethy</vendor>
 
     <description><![CDATA[
+    Teach programming with prepared code changes in the real editor. Record a lesson while developing an
+    example, then present each change at your own pace without live typing or copying code into slides.
     Present code step by step, like slides, or play a recorded refactoring back chunk by chunk as if it were
     edited live. Steps are versions of a file; each change between two steps plays as diff hunks, one at a time.
     <ul>
